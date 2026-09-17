@@ -1,0 +1,12 @@
+{
+  "name": "shorts-surge-radar",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "packageManager": "bun@1.2.14",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "bun run scripts/build.ts",
+    "dev": "bun run build && python3 -m http.server 4173 -d docs"
+  }
+}

@@ -53,6 +53,7 @@ bun run build
 
 - Bun 1.2 정적 번들러(제로 디펜던시)
 - TypeScript
+- 자체 호스팅 Noto Sans KR 웹폰트(SIL Open Font License 1.1)
 - YouTube Data API v3
 - 브라우저 Local Storage
 - GitHub Pages 정적 배포

@@ -468,7 +468,7 @@ function buildLaunchKit(inputs: LaunchInputs): void {
   const startDateLocal = inputs.startDateLocal || new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
   const normalized: LaunchInputs = { ...inputs, startDateLocal };
   try {
-    const trendSignals = toTrendSignals(state.marketVideos);
+    const trendSignals = toTrendSignals(state.marketVideos, state.marketFilters.region);
     const launchKit = generateLaunchKit(normalized, state.marketFilters.region, trendSignals);
     const trendNote = trendSignals.length
       ? `${state.marketFilters.region === 'KR' ? '대한민국' : state.marketFilters.region} 시장 레이더의 급상승 주제 ${trendSignals.length}개를 캘린더에 접목했습니다.`

@@ -2,6 +2,7 @@ import type {
   AnalyzedVideo,
   AppState,
   CalendarEntry,
+  ChannelVideo,
   ChannelAnalysis,
   ChannelDataset,
   ContentKind,
@@ -39,6 +40,8 @@ export interface AppActions {
   }) => void;
   onPublishVideo: (file: File | null, draft: PublishDraft, rightsConfirmed: boolean) => void;
   onGenerateLaunchKit: (inputs: LaunchInputs) => void;
+  onLaunchFromMarket: () => void;
+  onProduceFromLaunch: () => void;
 }
 
 import { NICHE_BLUEPRINTS } from '../launch/niches';
@@ -310,6 +313,133 @@ function videoLink(video: AnalyzedVideo): string {
   return `https://www.youtube.com/watch?v=${encodeURIComponent(video.videoId)}`;
 }
 
+function titleCharCount(title: string): number {
+  return [...title].length;
+}
+
+function benchmarkEngagement(video: ChannelVideo): number | null {
+  const views = video.metrics.views;
+  if (!views || views <= 0) return null;
+  const reactions = (video.metrics.likes ?? 0) + (video.metrics.comments ?? 0) * 2;
+  return reactions > 0 ? reactions / views : null;
+}
+
+function daysSince(publishedAt: string): number {
+  const parsed = Date.parse(publishedAt);
+  return Number.isFinite(parsed) ? Math.max(1, (Date.now() - parsed) / 86_400_000) : 30;
+}
+
+interface BenchmarkComparison {
+  medianViews: number;
+  myViews: number | null;
+  viewGapLabel: string;
+  medianTitleLen: number;
+  myTitleLen: number;
+  medianDuration: number | null;
+  myDuration: number | null;
+  medianEngagement: number | null;
+  myEngagement: number | null;
+  medianVelocity: number;
+  myVelocity: number | null;
+  insights: string[];
+}
+
+function medianOf(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function buildComparison(selected: AnalyzedVideo, benchmarks: ChannelVideo[]): BenchmarkComparison {
+  const views = benchmarks.map((video) => video.metrics.views ?? 0).filter((value) => value > 0);
+  const titleLens = benchmarks.map((video) => titleCharCount(video.title));
+  const durations = benchmarks.map((video) => video.durationSeconds).filter((value): value is number => value !== null && value > 0);
+  const engagements = benchmarks.map(benchmarkEngagement).filter((value): value is number => value !== null);
+  const velocities = benchmarks.map((video) => (video.metrics.views ?? 0) / daysSince(video.publishedAt)).filter((value) => value > 0);
+
+  const medianViews = medianOf(views);
+  const medianTitleLen = Math.round(medianOf(titleLens));
+  const medianDuration = durations.length ? medianOf(durations) : null;
+  const medianEngagement = engagements.length ? medianOf(engagements) : null;
+  const medianVelocity = medianOf(velocities);
+  const myViews = selected.metrics.views;
+  const myTitleLen = titleCharCount(selected.title);
+  const myEngagement = selected.engagementRate;
+  const myVelocity = selected.velocityPerDay;
+
+  const insights: string[] = [];
+  if (myViews !== null && medianViews > 0) {
+    const ratio = myViews / medianViews;
+    insights.push(ratio >= 1
+      ? `조회수가 동일 주제 인기 영상 중앙값의 ${ratio.toFixed(1)}배입니다. 성공 공식을 시리즈로 확장하세요.`
+      : `조회수가 인기 영상 중앙값의 ${(ratio * 100).toFixed(0)}% 수준입니다. 포장(제목·썸네일)부터 좁혀야 합니다.`);
+  }
+  if (medianTitleLen > 0) {
+    if (myTitleLen > medianTitleLen + 8) insights.push(`제목이 인기 영상(중앙값 ${medianTitleLen}자)보다 ${myTitleLen - medianTitleLen}자 깁니다. 핵심어를 앞 20자로 당기세요.`);
+    else if (myTitleLen < medianTitleLen - 8) insights.push(`제목이 인기 영상보다 짧습니다. 구체적 결과나 숫자를 한 개 더 넣어 보세요.`);
+    else insights.push(`제목 길이는 인기 영상과 비슷합니다. 첫 단어의 훅 강도로 승부하세요.`);
+  }
+  if (medianDuration !== null && myDurationDiffers(selected.durationSeconds, medianDuration)) {
+    insights.push(`인기 영상 길이 중앙값은 ${Math.round(medianDuration)}초입니다. 내 영상 ${selected.durationSeconds ?? '?'}초와 비교해 늘어지는 구간을 잘라 보세요.`);
+  }
+  if (medianEngagement !== null && myEngagement !== null) {
+    insights.push(myEngagement >= medianEngagement
+      ? `반응률이 인기 영상 중앙값 이상입니다. 시청자 참여를 시리즈 구독으로 연결하세요.`
+      : `반응률이 인기 영상 중앙값(${(medianEngagement * 100).toFixed(1)}%)보다 낮습니다. 엔딩 질문·CTA를 강화하세요.`);
+  }
+  if (!insights.length) insights.push('비교 신호가 충분하지 않습니다. 같은 주제 인기 영상을 더 불러와 비교해 보세요.');
+
+  return {
+    medianViews,
+    myViews,
+    viewGapLabel: myViews !== null && medianViews > 0
+      ? (myViews >= medianViews ? `+${(myViews / medianViews).toFixed(1)}배` : `${(myViews / medianViews * 100).toFixed(0)}%`)
+      : '—',
+    medianTitleLen,
+    myTitleLen,
+    medianDuration,
+    myDuration: selected.durationSeconds,
+    medianEngagement,
+    myEngagement,
+    medianVelocity,
+    myVelocity,
+    insights,
+  };
+}
+
+function myDurationDiffers(mine: number | null, median: number): boolean {
+  return mine !== null && Math.abs(mine - median) >= 8;
+}
+
+function comparisonRow(label: string, mine: string, theirs: string, verdict: string): string {
+  return `<div class="cmp-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(mine)}</b><b>${escapeHtml(theirs)}</b><em>${escapeHtml(verdict)}</em></div>`;
+}
+
+function renderComparison(selected: AnalyzedVideo, benchmarks: ChannelVideo[]): string {
+  const cmp = buildComparison(selected, benchmarks);
+  const durationVerdict = cmp.medianDuration === null || cmp.myDuration === null
+    ? '—'
+    : cmp.myDuration > cmp.medianDuration + 8 ? '더 김' : cmp.myDuration < cmp.medianDuration - 8 ? '더 짧음' : '비슷';
+  const engagementVerdict = cmp.medianEngagement === null || cmp.myEngagement === null
+    ? '데이터 필요'
+    : cmp.myEngagement >= cmp.medianEngagement ? '우위' : '열위';
+  const velocityVerdict = cmp.myVelocity === null || cmp.medianVelocity <= 0
+    ? '데이터 필요'
+    : cmp.myVelocity >= cmp.medianVelocity ? '우위' : '열위';
+  return `<div class="comparison-panel">
+    <div class="cmp-table">
+      <div class="cmp-head"><span>비교 항목</span><b>내 영상</b><b>인기 영상 중앙값</b><em>판정</em></div>
+      ${comparisonRow('조회수', formatNumber(cmp.myViews), formatNumber(cmp.medianViews), cmp.viewGapLabel)}
+      ${comparisonRow('제목 길이', `${cmp.myTitleLen}자`, `${cmp.medianTitleLen}자`, cmp.myTitleLen > cmp.medianTitleLen + 8 ? '더 김' : cmp.myTitleLen < cmp.medianTitleLen - 8 ? '더 짧음' : '비슷')}
+      ${comparisonRow('영상 길이', cmp.myDuration === null ? '—' : `${cmp.myDuration}초`, cmp.medianDuration === null ? '—' : `${Math.round(cmp.medianDuration)}초`, durationVerdict)}
+      ${comparisonRow('반응률', cmp.myEngagement === null ? '—' : `${(cmp.myEngagement * 100).toFixed(1)}%`, cmp.medianEngagement === null ? '—' : `${(cmp.medianEngagement * 100).toFixed(1)}%`, engagementVerdict)}
+      ${comparisonRow('일평균 조회', formatNumber(cmp.myVelocity), formatNumber(cmp.medianVelocity), velocityVerdict)}
+    </div>
+    <ol class="cmp-insights">${cmp.insights.map((insight) => `<li>${escapeHtml(insight)}</li>`).join('')}</ol>
+  </div>`;
+}
+
 function renderDoctor(state: AppState, dataset: ChannelDataset, analysis: ChannelAnalysis): string {
   const selected = analysis.videos.find((video) => video.videoId === state.selectedVideoId) ?? analysis.videos[0];
   if (!selected) return '<section class="empty-state"><h2>진단할 영상이 없습니다.</h2></section>';
@@ -358,7 +488,7 @@ function renderDoctor(state: AppState, dataset: ChannelDataset, analysis: Channe
 
       <section class="dashboard-block benchmark-block">
         <div class="block-heading"><div><p class="eyebrow">RELATED WINNERS</p><h2>연관 인기 영상 비교</h2></div><button class="text-button" data-load-benchmarks="${escapeHtml(selected.videoId)}">현재 주제로 비교 불러오기 ↻</button></div>
-        ${dataset.benchmarks.length ? `<div class="benchmark-grid">${dataset.benchmarks.slice(0, 6).map((video, index) => `<article><span>${String(index + 1).padStart(2, '0')}</span><img src="${safeUrl(video.thumbnailUrl)}" alt=""/><div><small>${escapeHtml(video.channelTitle ?? '연관 채널')}</small><h3>${escapeHtml(video.title)}</h3><p>조회 ${formatNumber(video.metrics.views)} · ${video.contentKind === 'short' ? '쇼츠 후보' : '일반 영상'}</p></div></article>`).join('')}</div><p class="benchmark-note">비교 영상 평균 조회 ${formatNumber(benchmarkAverage)}. 조회수 차이만 따라가지 말고 제목의 약속, 도입 증거, 영상 길이의 차이를 새 사례에 적용하세요.</p>` : '<div class="unavailable-panel"><strong>아직 비교 영상을 불러오지 않았습니다</strong><p>위 버튼을 누르면 현재 Google 인증으로 같은 주제의 인기 영상을 검색합니다.</p></div>'}
+        ${dataset.benchmarks.length ? `${renderComparison(selected, dataset.benchmarks)}<div class="benchmark-grid">${dataset.benchmarks.slice(0, 6).map((video, index) => `<article><span>${String(index + 1).padStart(2, '0')}</span><img src="${safeUrl(video.thumbnailUrl)}" alt=""/><div><small>${escapeHtml(video.channelTitle ?? '연관 채널')}</small><h3>${escapeHtml(video.title)}</h3><p>조회 ${formatNumber(video.metrics.views)} · ${video.contentKind === 'short' ? '쇼츠 후보' : '일반 영상'}</p></div></article>`).join('')}</div><p class="benchmark-note">비교 영상 평균 조회 ${formatNumber(benchmarkAverage)}. 조회수 차이만 따라가지 말고 제목의 약속, 도입 증거, 영상 길이의 차이를 새 사례에 적용하세요.</p>` : '<div class="unavailable-panel"><strong>아직 비교 영상을 불러오지 않았습니다</strong><p>위 버튼을 누르면 현재 Google 인증으로 같은 주제(내 태그·제목 키워드)의 인기 영상을 검색해 상세 비교표를 만듭니다.</p></div>'}
       </section>
     </div>
   </section>`;
@@ -526,7 +656,7 @@ function renderLaunchKit(kit: LaunchKit): string {
       <article class="launch-card"><p class="eyebrow">WEEKLY REVIEW</p><h2>매주 회고 루프</h2><ol>${kit.weeklyReview.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ol></article>
     </div>
 
-    <div class="launch-cta"><p>대본과 자막이 필요하면 <b>제작·예약</b> 탭에서 CapCut 작업팩을 만들고, 완성 영상을 예약 발행하세요.</p><button class="secondary-button" data-view="produce">제작·예약으로 이동</button></div>
+    <div class="launch-cta"><p>이제 캘린더의 트렌드 주제로 대본·자막을 만들 차례입니다. <b>제작·예약</b> 탭에서 이 트렌드 영상들이 작업 소스로 채워집니다.</p><button class="primary-button" id="launch-to-produce">이 트렌드로 제작·예약 시작 →</button></div>
   </section>`;
 }
 
@@ -574,6 +704,7 @@ function renderMarket(state: AppState): string {
       <button class="primary-button" type="submit" ${state.marketLoading ? 'disabled' : ''}>시장 스캔</button>
     </form>
     ${state.marketError ? `<div class="notice notice--warning">${escapeHtml(state.marketError)}</div>` : ''}
+    ${state.marketVideos.length ? `<aside class="market-bridge"><div><strong>이 트렌드로 채널 전략을 만들까요?</strong><span>방금 스캔한 ${escapeHtml(state.marketFilters.region === 'KR' ? '대한민국' : state.marketFilters.region)} 급상승 주제를 채널 런치 캘린더에 자동 접목합니다.</span></div><button class="primary-button" id="market-to-launch">채널 런치로 보내기 →</button></aside>` : ''}
     <section class="market-list"><div class="block-heading"><div><p class="eyebrow">SURGE RANKING</p><h2>지금 가속 중인 영상</h2></div><span>OWNER OAUTH DATA</span></div>${state.marketVideos.length ? state.marketVideos.map(marketCard).join('') : '<div class="unavailable-panel market-empty"><strong>주제를 입력해 시장 스캔을 시작하세요</strong><p>현재 채널과 같은 시청자 관심사를 가진 최근 인기 영상을 Google 인증으로 검색합니다. 검색은 YouTube API 할당량을 사용합니다.</p></div>'}</section>
   </main>`;
 }
@@ -661,6 +792,8 @@ function bindActions(root: HTMLElement, actions: AppActions): void {
   });
 
   root.querySelector('#launch-reset')?.addEventListener('click', () => actions.onNavigate('launch'));
+  root.querySelector('#market-to-launch')?.addEventListener('click', actions.onLaunchFromMarket);
+  root.querySelector('#launch-to-produce')?.addEventListener('click', actions.onProduceFromLaunch);
   root.querySelector<HTMLFormElement>('#launch-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget as HTMLFormElement);

@@ -22,6 +22,7 @@ import {
   updateProductionDraft,
 } from './export/capcut-package';
 import { generateLaunchKit, toTrendSignals } from './launch/launch-kit';
+import { titleMatchesRegion } from './launch/region-language';
 import type {
   AppState,
   ChannelDataset,
@@ -309,10 +310,14 @@ async function searchMarket(filters: DashboardFilters): Promise<void> {
       filters.region,
       filters.periodHours,
     );
+    const regionMatched = videos.filter((video) => titleMatchesRegion(video.title, filters.region));
+    const usable = regionMatched.length >= 3 ? regionMatched : videos;
     update({
       marketLoading: false,
-      marketVideos: rankShorts(videos.map(marketVideo), new Map(), Date.now()),
-      marketError: null,
+      marketVideos: rankShorts(usable.map(marketVideo), new Map(), Date.now()),
+      marketError: regionMatched.length < 3 && filters.region === 'KR'
+        ? '한국어 결과가 적어 일부 해외 영상이 포함됐습니다. 검색어에 한국어 키워드를 넣으면 정확해집니다.'
+        : null,
     });
   } catch (error) {
     update({ marketLoading: false, marketError: errorMessage(error) });

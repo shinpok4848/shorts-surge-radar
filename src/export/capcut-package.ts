@@ -213,7 +213,7 @@ export function buildCapCutFiles(draft: ProductionDraft): ZipTextFile[] {
     { name: '03_shot_list.csv', content: `\uFEFF${shotCsv}` },
     { name: '04_youtube_metadata.txt', content: `\uFEFF제목\n${draft.title}\n\n설명\n${draft.description}\n\n태그\n${tagsText}\n` },
     { name: '05_youtube_metadata.json', content: JSON.stringify(metadata, null, 2) },
-    { name: '06_reference_only.txt', content: `\uFEFF참고 영상: ${draft.sourceTitle}\n채널: ${draft.sourceChannelTitle}\n주소: ${draft.sourceUrl}\n\n대본·화면·음원 복제 금지. 주제와 구조 비교에만 사용하세요.\n` },
+    { name: '06_reference_study.txt', content: `\uFEFF참고 영상 학습 노트\n\n제목: ${draft.sourceTitle}\n채널: ${draft.sourceChannelTitle}\n주소: ${draft.sourceUrl}\n\n[학습 방법]\n1. 위 주소를 브라우저에서 직접 열어 시청합니다.\n2. 첫 3초에서 무엇을 먼저 보여주는지, 어떤 훅을 쓰는지 메모합니다.\n3. 정보가 바뀌는 지점(컷 전환)의 리듬을 관찰합니다.\n4. 그 구조를 참고해 내 사례·화면·해설로 새로 촬영합니다.\n\n[금지]\n- 원본 영상 파일 다운로드 및 재업로드\n- 원본 화면·음원·대본을 그대로 사용\n- 미세 변형 후 재업로드\n\n이 도구는 원본을 복제하지 않습니다. 주제와 구조를 학습해 직접 만든 새 원본만 사용하세요. (YouTube 서비스 약관 및 저작권 준수)\n` },
     { name: 'README_KO.txt', content: `\uFEFF${readme}` },
   ];
 }

@@ -126,7 +126,7 @@ export function inferMarketLaunchInsights(
   region: RegionCode = 'KR',
   explicitQuery = '',
 ): MarketLaunchInsights {
-  const matching = videos.filter((video) => titleMatchesRegion(video.title, region)).slice(0, 120);
+  const matching = videos.filter((video) => titleMatchesRegion(video.title, region)).slice(0, 200);
   const topicMap = new Map<string, TopicAccumulator>();
   const structureMap = new Map<TrendStructureCandidate['id'], {
     definition: StructureDefinition;

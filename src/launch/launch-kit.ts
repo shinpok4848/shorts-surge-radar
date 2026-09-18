@@ -4,12 +4,42 @@ import type {
   LaunchInputs,
   LaunchKit,
   NicheBlueprint,
+  RankedShort,
+  RegionCode,
   RetentionCheck,
   SeriesConcept,
+  TrendSignal,
 } from '../types';
 import { blueprintById } from './niches';
 
 const DAY_MS = 86_400_000;
+
+const REGION_LABELS: Record<string, string> = { KR: '대한민국', US: '미국', JP: '일본', GB: '영국' };
+
+const STOP_WORDS = new Set([
+  'shorts', '쇼츠', 'short', 'youtube', '유튜브', 'the', 'and', 'for', 'you', 'your',
+  '이거', '그리고', '하는', '있는', '없는', '진짜', '정말', '오늘', '이것', '저것',
+]);
+
+function keywordFromTitle(title: string): string {
+  const word = title
+    .replace(/[#()[\]{}!?.,:;“”"'|｜]/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .find((token) => token.length >= 2 && !STOP_WORDS.has(token.toLocaleLowerCase()));
+  return word ?? title.slice(0, 12).trim();
+}
+
+export function toTrendSignals(videos: RankedShort[]): TrendSignal[] {
+  return videos.slice(0, 8).map((video) => ({
+    title: video.title,
+    channelTitle: video.channelTitle,
+    keyword: keywordFromTitle(video.title),
+    velocityPerHour: video.velocity,
+    views: video.views,
+    videoId: video.videoId,
+  }));
+}
 
 // Hook library grounded in short-form retention behavior: the first 1-2 seconds
 // decide whether the viewer stays, so every pattern front-loads tension or payoff.
@@ -77,6 +107,7 @@ function buildCalendar(
   series: SeriesConcept[],
   subject: string,
   inputs: LaunchInputs,
+  trends: TrendSignal[],
 ): CalendarEntry[] {
   const start = isoDate(inputs.startDateLocal);
   const perWeek = inputs.cadencePerWeek;
@@ -96,14 +127,23 @@ function buildCalendar(
       const seriesConcept = series[entries.length % series.length];
       const hook = HOOK_LIBRARY[entries.length % HOOK_LIBRARY.length];
       const focus = focusForDay(entries.length);
+      // Every third slot chases a live trending keyword so the channel rides current demand
+      // while the other slots build the durable evergreen series.
+      const trend = trends.length && entries.length % 3 === 2
+        ? trends[Math.floor(entries.length / 3) % trends.length]
+        : null;
+      const workingTitle = trend
+        ? `${subject} × ${trend.keyword} · 지금 뜨는 주제 접목`
+        : `${subject} · ${seriesConcept.sampleEpisodes[entries.length % seriesConcept.sampleEpisodes.length]}`;
       entries.push({
         day: entries.length + 1,
         dateLabel: formatter.format(date),
-        seriesName: seriesConcept.name,
-        workingTitle: `${subject} · ${seriesConcept.sampleEpisodes[entries.length % seriesConcept.sampleEpisodes.length]}`,
+        seriesName: trend ? '트렌드 추종' : seriesConcept.name,
+        workingTitle,
         hook: hook.example,
-        focus,
-        cta: ctaForFocus(focus),
+        focus: trend ? 'reach' : focus,
+        cta: ctaForFocus(trend ? 'reach' : focus),
+        ...(trend ? { trendTie: `${trend.keyword} (${trend.channelTitle})` } : {}),
       });
       dayCounter += 1;
     }
@@ -123,17 +163,37 @@ function retentionChecklist(): RetentionCheck[] {
   ];
 }
 
-export function generateLaunchKit(inputs: LaunchInputs): LaunchKit {
+export function generateLaunchKit(
+  inputs: LaunchInputs,
+  region: RegionCode = 'KR',
+  trendSignals: TrendSignal[] = [],
+): LaunchKit {
   const niche = blueprintById(inputs.nicheId);
   const fallback = niche.keywords.slice(0, 3);
   const words = topicWords(inputs.topic, fallback);
   const subject = words.slice(0, 2).join(' ') || niche.label;
   const series = buildSeries(niche, subject);
-  const calendar = buildCalendar(series, subject, inputs);
+  const calendar = buildCalendar(series, subject, inputs, trendSignals);
+  const regionLabel = REGION_LABELS[region] ?? region;
 
   return {
     niche,
     channelPromise: `${subject}에 대해 ${niche.promise}`,
+    regionLabel,
+    trendSignals,
+    trendPlaybook: trendSignals.length
+      ? [
+        `${regionLabel} 시장 레이더에서 지금 가속 중인 주제를 캘린더 3번째 슬롯마다 접목했습니다.`,
+        '뜨는 키워드는 24시간 안에 내 니치 관점으로 재해석해 발행 속도를 우선합니다.',
+        '트렌드 영상을 복제하지 말고, 같은 주제를 내 포맷·사례로 다시 만드세요.',
+        '반응이 좋은 트렌드 접목 편은 즉시 3부작 시리즈로 확장합니다.',
+        '매일 시장 레이더를 다시 열어 새 급상승 키워드로 다음 트렌드 슬롯을 교체하세요.',
+      ]
+      : [
+        `${regionLabel} 시장 레이더를 먼저 실행하면, 지금 뜨는 주제가 캘린더에 자동 접목됩니다.`,
+        '트렌드 신호 없이도 에버그린 시리즈로 채널 정체성을 먼저 쌓을 수 있습니다.',
+        '시장 레이더 → 채널 런치 순서로 열면 트렌드 추종형 캘린더가 만들어집니다.',
+      ],
     visualIdentity: [
       '채널명·프로필·배너에 한 문장 약속을 그대로 노출',
       '모든 썸네일에 동일한 색 1개와 폰트 1개만 사용',

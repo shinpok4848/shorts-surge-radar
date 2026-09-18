@@ -41,6 +41,7 @@ export interface CalendarEntry {
   hook: string;
   focus: 'reach' | 'retention' | 'engagement' | 'conversion';
   cta: string;
+  trendTie?: string;
 }
 
 export interface RetentionCheck {
@@ -49,9 +50,19 @@ export interface RetentionCheck {
   detail: string;
 }
 
+export interface TrendSignal {
+  title: string;
+  channelTitle: string;
+  keyword: string;
+  velocityPerHour: number;
+  views: number;
+  videoId: string;
+}
+
 export interface LaunchKit {
   niche: NicheBlueprint;
   channelPromise: string;
+  regionLabel: string;
   visualIdentity: string[];
   series: SeriesConcept[];
   hooks: HookTemplate[];
@@ -59,6 +70,8 @@ export interface LaunchKit {
   retentionChecklist: RetentionCheck[];
   weeklyReview: string[];
   firstWeekActions: string[];
+  trendSignals: TrendSignal[];
+  trendPlaybook: string[];
   createdAt: string;
 }
 

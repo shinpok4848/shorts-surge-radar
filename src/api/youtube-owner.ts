@@ -446,13 +446,24 @@ async function searchAuthenticatedVideos(
     order: 'viewCount',
     maxResults: String(options.maxResults ?? 20),
     regionCode: region,
-    q: cleanSearchQuery(query) || 'shorts',
+    relevanceLanguage: relevanceLanguageForRegion(region),
+    q: cleanSearchQuery(query) || defaultQueryForRegion(region),
     ...(options.publishedAfter ? { publishedAfter: options.publishedAfter } : {}),
   }, accessToken);
   const ids = (response.items ?? [])
     .map((item) => item.id?.videoId)
     .filter((videoId): videoId is string => Boolean(videoId));
   return ownedVideoDetails(ids, accessToken);
+}
+
+function relevanceLanguageForRegion(region: string): string {
+  return ({ KR: 'ko', US: 'en', JP: 'ja', GB: 'en' } as Record<string, string>)[region] ?? 'en';
+}
+
+function defaultQueryForRegion(region: string): string {
+  // A bare "shorts" query ranks global (mostly English) videos even with a regionCode,
+  // so seed the local-language Shorts keyword to surface region-native trends.
+  return ({ KR: '쇼츠', US: 'shorts', JP: 'ショート', GB: 'shorts' } as Record<string, string>)[region] ?? 'shorts';
 }
 
 export async function fetchOwnedChannelBenchmarks(
@@ -473,7 +484,7 @@ export async function fetchAuthenticatedMarketTrends(
 ): Promise<ChannelVideo[]> {
   const boundedHours = Math.min(720, Math.max(24, hours));
   const publishedAfter = new Date(Date.now() - boundedHours * 3_600_000).toISOString();
-  return searchAuthenticatedVideos(accessToken, query || 'shorts', region, {
+  return searchAuthenticatedVideos(accessToken, query, region, {
     maxResults: 50,
     publishedAfter,
   });

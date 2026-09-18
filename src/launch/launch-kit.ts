@@ -11,6 +11,7 @@ import type {
   TrendSignal,
 } from '../types';
 import { blueprintById } from './niches';
+import { titleMatchesRegion } from './region-language';
 
 const DAY_MS = 86_400_000;
 
@@ -47,17 +48,10 @@ function keywordFromTitle(title: string, preferHangul: boolean): string {
   return meaningful ?? title.slice(0, 12).trim();
 }
 
-function looksRelevant(title: string, preferHangul: boolean): boolean {
-  // For KR/JP, drop clearly off-language trend rows (e.g., Hindi/English-only spam)
-  // so the launch calendar and produce list surface region-native topics.
-  if (!preferHangul) return true;
-  return HANGUL.test(title);
-}
-
 export function toTrendSignals(videos: RankedShort[], region: RegionCode = 'KR'): TrendSignal[] {
   const preferHangul = region === 'KR';
   return videos
-    .filter((video) => looksRelevant(video.title, preferHangul))
+    .filter((video) => titleMatchesRegion(video.title, region))
     .slice(0, 8)
     .map((video) => ({
       title: video.title,

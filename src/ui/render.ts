@@ -443,6 +443,7 @@ function renderProductionWorkbench(state: AppState, draft: ProductionDraft): str
   return `<section class="production-workbench">
     <header class="production-heading"><div><p class="eyebrow accent">ORIGINAL SHORTS WORKBENCH</p><h1>CapCut 작업팩</h1><p>대본과 메타데이터를 편집한 뒤 ZIP을 받으세요. SRT는 CapCut Desktop/Web의 외부 자막 가져오기에 사용할 수 있습니다.</p></div><div class="duration-lock"><strong>${draft.targetDurationSeconds}</strong><span>SECONDS MAX</span></div></header>
     <aside class="copyright-boundary"><strong>복제가 아닌 새 제작</strong><p>참고 영상의 정확한 대본·화면·음원은 포함하지 않습니다. 아래 초안은 주제와 구조만 참고해 새로 작성됐습니다. 본인이 권리를 가진 대본은 직접 붙여넣어 패키징할 수 있습니다.</p></aside>
+    <aside class="capcut-note"><strong>CapCut 연동 안내</strong><p>ZIP에는 SRT 자막·대본·샷리스트·메타데이터가 들어갑니다. CapCut Desktop/Web에서 <b>자막 가져오기</b>로 SRT를 불러오면 대본이 타임라인에 들어갑니다. CapCut은 외부 앱 자동 실행·자동 편집 API를 공개하지 않아 자동 삽입은 불가능하며, 타인 영상 파일 다운로드는 저작권·약관 위반이라 제공하지 않습니다. 원본은 참고 링크로 열어 학습하고 직접 촬영하세요.</p></aside>
     <form id="production-form" class="production-form">
       <section class="production-reference"><img src="${safeUrl(draft.sourceThumbnailUrl)}" alt="${escapeHtml(draft.sourceTitle)} 썸네일"/><div><span>${sourceType}</span><h2>${escapeHtml(draft.sourceTitle)}</h2><p>${escapeHtml(draft.sourceChannelTitle)}</p><a href="${escapeHtml(draft.sourceUrl)}" target="_blank" rel="noopener noreferrer">참고 링크 확인 ↗</a></div></section>
       <div class="production-editor-grid">

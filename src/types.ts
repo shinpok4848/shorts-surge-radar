@@ -42,6 +42,7 @@ export interface CalendarEntry {
   focus: 'reach' | 'retention' | 'engagement' | 'conversion';
   cta: string;
   trendTie?: string;
+  inferredStructure?: string;
 }
 
 export interface RetentionCheck {
@@ -59,10 +60,39 @@ export interface TrendSignal {
   videoId: string;
 }
 
+export interface TrendTopicCandidate {
+  topic: string;
+  score: number;
+  confidence: 'high' | 'medium' | 'exploratory';
+  supportCount: number;
+  distinctChannels: number;
+  evidenceTitles: string[];
+}
+
+export interface TrendStructureCandidate {
+  id: 'numbered' | 'mistake-fix' | 'before-after' | 'explainer' | 'contrast-reaction';
+  label: string;
+  score: number;
+  supportCount: number;
+  evidenceTitles: string[];
+}
+
+export interface MarketLaunchInsights {
+  primaryTopic: string;
+  confidence: 'high' | 'medium' | 'exploratory';
+  recommendedNicheId: string;
+  topics: TrendTopicCandidate[];
+  structures: TrendStructureCandidate[];
+  analyzedVideos: number;
+  distinctChannels: number;
+  generatedAt: string;
+}
+
 export interface LaunchKit {
   niche: NicheBlueprint;
   channelPromise: string;
   regionLabel: string;
+  marketInsights: MarketLaunchInsights;
   visualIdentity: string[];
   series: SeriesConcept[];
   hooks: HookTemplate[];
@@ -294,6 +324,14 @@ export interface AppNotice {
   message: string;
 }
 
+export interface MarketSearchMeta {
+  requestedLimit: number;
+  candidateCount: number;
+  displayedCount: number;
+  pagesFetched: number;
+  scannedAt: string;
+}
+
 export interface AppState {
   view: AppView;
   section: DashboardSection;
@@ -313,6 +351,8 @@ export interface AppState {
   marketVideos: RankedShort[];
   marketLoading: boolean;
   marketError: string | null;
+  marketPage: number;
+  marketMeta: MarketSearchMeta | null;
   productionDraft: ProductionDraft | null;
   publishDraft: PublishDraft | null;
   upload: UploadState;

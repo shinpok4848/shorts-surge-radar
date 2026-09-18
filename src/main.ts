@@ -21,7 +21,11 @@ import {
   downloadCapCutPackage,
   updateProductionDraft,
 } from './export/capcut-package';
-import { generateLaunchKit, toTrendSignals } from './launch/launch-kit';
+import {
+  generateLaunchKit,
+  inferMarketLaunchInsights,
+  toTrendSignals,
+} from './launch/launch-kit';
 import { titleMatchesRegion } from './launch/region-language';
 import type {
   AppState,
@@ -43,6 +47,19 @@ const appRoot: HTMLDivElement = root;
 
 const sessionsByChannel = new Map<string, GoogleSession>();
 const datasetsByChannel = new Map<string, ChannelDataset>();
+let marketRequestId = 0;
+
+const DEFAULT_MARKET_FILTERS: DashboardFilters = { region: 'KR', periodHours: 168, query: '' };
+const MARKET_PAGE_SIZE = 20;
+
+function defaultLaunchInputs(): LaunchInputs {
+  return {
+    nicheId: 'how-to-fix',
+    topic: '',
+    cadencePerWeek: 5,
+    startDateLocal: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
+  };
+}
 
 function emptyUploadState(): AppState['upload'] {
   return { fileName: '', fileSize: 0, progress: 0, phase: 'idle', message: '', videoId: null };
@@ -71,19 +88,16 @@ let state: AppState = {
   sortBy: 'health',
   connectedChannels: [],
   activeChannelId: null,
-  marketFilters: { region: 'KR', periodHours: 168, query: '' },
+  marketFilters: { ...DEFAULT_MARKET_FILTERS },
   marketVideos: [],
   marketLoading: false,
   marketError: null,
+  marketPage: 1,
+  marketMeta: null,
   productionDraft: null,
   publishDraft: null,
   upload: emptyUploadState(),
-  launchInputs: {
-    nicheId: 'how-to-fix',
-    topic: '',
-    cadencePerWeek: 5,
-    startDateLocal: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
-  },
+  launchInputs: defaultLaunchInputs(),
   launchKit: null,
 };
 
@@ -108,6 +122,7 @@ function upsertConnectedChannel(channel: ConnectedChannel): ConnectedChannel[] {
 }
 
 function showDataset(dataset: ChannelDataset, notice?: string): void {
+  marketRequestId += 1;
   const analysis = analyzeChannel(dataset);
   update({
     dataset,
@@ -121,9 +136,13 @@ function showDataset(dataset: ChannelDataset, notice?: string): void {
     loadingMessage: '',
     marketVideos: [],
     marketError: null,
+    marketPage: 1,
+    marketMeta: null,
     productionDraft: null,
     publishDraft: null,
     upload: emptyUploadState(),
+    launchInputs: defaultLaunchInputs(),
+    launchKit: null,
     error: null,
     notice: notice ? { tone: 'success', message: notice } : null,
   });
@@ -206,6 +225,7 @@ async function disconnectActiveChannel(): Promise<void> {
       return;
     }
   }
+  marketRequestId += 1;
   update({
     view: 'diagnosis',
     section: 'overview',
@@ -214,8 +234,17 @@ async function disconnectActiveChannel(): Promise<void> {
     dataset: null,
     analysis: null,
     selectedVideoId: null,
+    marketFilters: { ...DEFAULT_MARKET_FILTERS },
     marketVideos: [],
+    marketLoading: false,
     marketError: null,
+    marketPage: 1,
+    marketMeta: null,
+    productionDraft: null,
+    publishDraft: null,
+    upload: emptyUploadState(),
+    launchInputs: defaultLaunchInputs(),
+    launchKit: null,
     error: null,
     notice: { tone: 'info', message: 'Google 채널 연결을 안전하게 해제했습니다.' },
   });
@@ -305,28 +334,58 @@ function marketVideo(video: ChannelVideo): ShortsVideo {
 
 async function searchMarket(filters: DashboardFilters): Promise<void> {
   const session = activeSession();
-  update({ marketFilters: filters, marketLoading: true, marketError: null, error: null, notice: null });
-  if (!session) {
+  const requestId = ++marketRequestId;
+  const channelId = state.activeChannelId;
+  update({
+    marketFilters: filters,
+    marketLoading: true,
+    marketError: null,
+    marketPage: 1,
+    marketMeta: null,
+    launchKit: null,
+    error: null,
+    notice: null,
+  });
+  if (!session || !channelId) {
     update({ marketLoading: false, marketError: '현재 채널의 Google 연결이 만료됐습니다.' });
     return;
   }
   try {
-    const videos = await fetchAuthenticatedMarketTrends(
+    const result = await fetchAuthenticatedMarketTrends(
       session.accessToken,
       filters.query,
       filters.region,
       filters.periodHours,
     );
-    const regionMatched = videos.filter((video) => titleMatchesRegion(video.title, filters.region));
-    const usable = regionMatched.length >= 3 ? regionMatched : videos;
+    if (requestId !== marketRequestId || state.activeChannelId !== channelId) return;
+
+    const regionMatched = result.videos.filter((video) => titleMatchesRegion(video.title, filters.region));
+    const shorts = regionMatched.filter((video) => (
+      video.durationSeconds !== null
+      && video.durationSeconds > 0
+      && video.durationSeconds <= 60
+    ));
+    const ranked = rankShorts(shorts.map(marketVideo), new Map(), Date.now());
+    const regionLabel = filters.region === 'KR' ? '대한민국' : filters.region;
     update({
       marketLoading: false,
-      marketVideos: rankShorts(usable.map(marketVideo), new Map(), Date.now()),
-      marketError: regionMatched.length < 3 && filters.region === 'KR'
-        ? '한국어 결과가 적어 일부 해외 영상이 포함됐습니다. 검색어에 한국어 키워드를 넣으면 정확해집니다.'
-        : null,
+      marketVideos: ranked,
+      marketPage: 1,
+      marketMeta: {
+        requestedLimit: 200,
+        candidateCount: result.candidateCount,
+        displayedCount: ranked.length,
+        pagesFetched: result.pagesFetched,
+        scannedAt: new Date().toISOString(),
+      },
+      marketError: ranked.length
+        ? ranked.length < 20
+          ? `${regionLabel} 언어·60초 이하 조건을 통과한 영상이 ${ranked.length}개입니다. 한국어 주제어를 추가하거나 기간을 30일로 넓혀 보세요.`
+          : null
+        : `${regionLabel} 언어·60초 이하 조건에 맞는 영상이 없습니다. 검색어 또는 기간을 바꿔 주세요.`,
     });
   } catch (error) {
+    if (requestId !== marketRequestId) return;
     update({ marketLoading: false, marketError: errorMessage(error) });
   }
 }
@@ -473,18 +532,29 @@ async function publishVideo(file: File | null, draft: PublishDraft, rightsConfir
 }
 
 function buildLaunchKit(inputs: LaunchInputs): void {
-  if (!inputs.topic.trim()) {
-    update({ launchInputs: inputs, error: '채널의 핵심 주제 또는 키워드를 입력해 주세요.' });
+  const insights = inferMarketLaunchInsights(
+    state.marketVideos,
+    state.marketFilters.region,
+    inputs.topic || state.marketFilters.query,
+  );
+  const effectiveTopic = inputs.topic.trim() || insights.primaryTopic;
+  if (!effectiveTopic) {
+    update({ launchInputs: inputs, error: '시장 레이더를 먼저 실행하거나 핵심 주제를 입력해 주세요.' });
     return;
   }
   const startDateLocal = inputs.startDateLocal || new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-  const normalized: LaunchInputs = { ...inputs, startDateLocal };
+  const normalized: LaunchInputs = { ...inputs, topic: effectiveTopic, startDateLocal };
   try {
     const trendSignals = toTrendSignals(state.marketVideos, state.marketFilters.region);
-    const launchKit = generateLaunchKit(normalized, state.marketFilters.region, trendSignals);
+    const launchKit = generateLaunchKit(
+      normalized,
+      state.marketFilters.region,
+      trendSignals,
+      insights,
+    );
     const trendNote = trendSignals.length
-      ? `${state.marketFilters.region === 'KR' ? '대한민국' : state.marketFilters.region} 시장 레이더의 급상승 주제 ${trendSignals.length}개를 캘린더에 접목했습니다.`
-      : '시장 레이더를 먼저 실행하면 지금 뜨는 주제가 캘린더에 자동 접목됩니다.';
+      ? `“${insights.primaryTopic}”을 ${insights.confidence} 신뢰도로 선정하고, 성과 구조 ${insights.structures.length}개를 반영했습니다.`
+      : '시장 레이더를 먼저 실행하면 반복 주제와 성과 구조를 자동 기획합니다.';
     update({
       launchInputs: normalized,
       launchKit,
@@ -502,10 +572,17 @@ function launchFromMarket(): void {
     update({ view: 'market', error: '먼저 시장 스캔을 실행해 트렌드 데이터를 만들어 주세요.' });
     return;
   }
-  // Carry the current market topic into the launch inputs so the kit reflects the scan.
-  const topic = state.marketFilters.query.trim() || state.launchInputs.topic;
-  const inputs: LaunchInputs = { ...state.launchInputs, topic };
-  update({ view: 'launch', launchInputs: inputs });
+  const insights = inferMarketLaunchInsights(
+    state.marketVideos,
+    state.marketFilters.region,
+    state.marketFilters.query,
+  );
+  const inputs: LaunchInputs = {
+    ...state.launchInputs,
+    topic: insights.primaryTopic,
+    nicheId: insights.recommendedNicheId,
+  };
+  state = { ...state, view: 'launch', launchInputs: inputs, launchKit: null };
   buildLaunchKit(inputs);
 }
 
@@ -522,6 +599,45 @@ function produceFromLaunch(): void {
       : { tone: 'warning', message: '시장 레이더를 먼저 실행하면 트렌드 영상이 제작 소스로 채워집니다.' },
   });
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetMarket(): void {
+  marketRequestId += 1;
+  update({
+    marketFilters: { ...DEFAULT_MARKET_FILTERS },
+    marketVideos: [],
+    marketLoading: false,
+    marketError: null,
+    marketPage: 1,
+    marketMeta: null,
+    launchInputs: defaultLaunchInputs(),
+    launchKit: null,
+    productionDraft: null,
+    publishDraft: null,
+    upload: emptyUploadState(),
+    error: null,
+    notice: { tone: 'info', message: '시장 검색과 연결된 런치·제작 데이터를 초기화했습니다.' },
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetLaunch(): void {
+  update({
+    launchInputs: defaultLaunchInputs(),
+    launchKit: null,
+    productionDraft: null,
+    publishDraft: null,
+    upload: emptyUploadState(),
+    error: null,
+    notice: { tone: 'info', message: '런치 기획을 초기화했습니다. 시장 데이터는 유지됩니다.' },
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function setMarketPage(page: number): void {
+  const pages = Math.max(1, Math.ceil(state.marketVideos.length / MARKET_PAGE_SIZE));
+  update({ marketPage: Math.min(pages, Math.max(1, page)), error: null, notice: null });
+  document.querySelector('.market-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function render(): void {
@@ -544,6 +660,9 @@ function render(): void {
     onGenerateLaunchKit: buildLaunchKit,
     onLaunchFromMarket: launchFromMarket,
     onProduceFromLaunch: produceFromLaunch,
+    onResetMarket: resetMarket,
+    onResetLaunch: resetLaunch,
+    onSetMarketPage: setMarketPage,
   });
 }
 

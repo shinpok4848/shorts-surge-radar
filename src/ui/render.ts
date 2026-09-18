@@ -470,13 +470,22 @@ function renderLaunchForm(state: AppState): string {
       <label><span>시작일</span><input name="startDateLocal" type="date" value="${escapeHtml(inputs.startDateLocal)}" /></label>
       <button class="primary-button" type="submit">런치 킷 생성</button>
     </form>
+    <p class="launch-trend-hint">${state.marketVideos.length ? `현재 시장 레이더(${escapeHtml(state.marketFilters.region === 'KR' ? '대한민국' : state.marketFilters.region)})의 급상승 주제 ${state.marketVideos.length}개가 캘린더에 접목됩니다.` : '먼저 상단 <b>시장 레이더</b>에서 국가를 고르고 스캔하면, 그 나라의 지금 뜨는 주제가 캘린더에 자동 접목됩니다.'}</p>
     <div class="niche-preview">${NICHE_BLUEPRINTS.map((niche) => `<article class="${inputs.nicheId === niche.id ? 'is-active' : ''}"><h3>${escapeHtml(niche.label)}</h3><p>${escapeHtml(niche.promise)}</p><small>${escapeHtml(niche.postingCadence)}</small></article>`).join('')}</div>
   </section>`;
 }
 
 function renderLaunchKit(kit: LaunchKit): string {
   return `<section class="launch-result">
-    <header class="launch-result-head"><div><p class="eyebrow accent">LAUNCH BLUEPRINT / ${escapeHtml(kit.niche.label)}</p><h1>${escapeHtml(kit.channelPromise)}</h1><p>대상 시청자: ${escapeHtml(kit.niche.audience)} · 권장 수익화 경로: ${escapeHtml(kit.niche.monetizationPath)}</p></div><button class="quiet-button" id="launch-reset">다시 설계</button></header>
+    <header class="launch-result-head"><div><p class="eyebrow accent">LAUNCH BLUEPRINT / ${escapeHtml(kit.niche.label)} · ${escapeHtml(kit.regionLabel)}</p><h1>${escapeHtml(kit.channelPromise)}</h1><p>대상 시청자: ${escapeHtml(kit.niche.audience)} · 권장 수익화 경로: ${escapeHtml(kit.niche.monetizationPath)}</p></div><button class="quiet-button" id="launch-reset">다시 설계</button></header>
+
+    <div class="dashboard-block">
+      <div class="block-heading"><div><p class="eyebrow">TREND TRACKING / ${escapeHtml(kit.regionLabel)}</p><h2>지금 뜨는 주제 추종</h2></div><span>${kit.trendSignals.length ? `${kit.trendSignals.length}개 신호 반영` : '시장 레이더 미실행'}</span></div>
+      ${kit.trendSignals.length
+        ? `<div class="trend-signal-grid">${kit.trendSignals.map((signal, index) => `<article><span>${String(index + 1).padStart(2, '0')}</span><div><b>${escapeHtml(signal.keyword)}</b><small>${escapeHtml(signal.title)}</small><em>${escapeHtml(signal.channelTitle)} · ${compactNumber.format(signal.views)}회</em></div></article>`).join('')}</div>`
+        : '<div class="unavailable-panel"><strong>아직 트렌드 신호가 없습니다</strong><p>상단 <b>시장 레이더</b>에서 국가를 고르고 스캔한 뒤 다시 런치 킷을 생성하면, 그 나라의 급상승 주제가 캘린더에 접목됩니다.</p></div>'}
+      <ol class="trend-playbook">${kit.trendPlaybook.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
+    </div>
 
     <div class="launch-grid">
       <article class="launch-card"><p class="eyebrow">CHANNEL IDENTITY</p><h2>채널 시각 규칙</h2><ul>${kit.visualIdentity.map((rule) => `<li>${escapeHtml(rule)}</li>`).join('')}</ul></article>
@@ -496,7 +505,7 @@ function renderLaunchKit(kit: LaunchKit): string {
     <div class="dashboard-block">
       <div class="block-heading"><div><p class="eyebrow">30-DAY CALENDAR</p><h2>발행 캘린더</h2></div><span>같은 시간대 일관 발행</span></div>
       <div class="calendar-head"><span>#</span><span>날짜</span><span>시리즈 · 작업 제목</span><span>훅</span><span>목표</span></div>
-      <div class="calendar-rows">${kit.calendar.map((entry) => `<div class="calendar-row"><span class="cal-day">${String(entry.day).padStart(2, '0')}</span><span class="cal-date">${escapeHtml(entry.dateLabel)}</span><span class="cal-title"><b>${escapeHtml(entry.seriesName)}</b><small>${escapeHtml(entry.workingTitle)}</small></span><span class="cal-hook">${escapeHtml(entry.hook)}</span><span class="cal-focus focus--${entry.focus}">${focusBadge(entry.focus)}</span></div>`).join('')}</div>
+      <div class="calendar-rows">${kit.calendar.map((entry) => `<div class="calendar-row ${entry.trendTie ? 'is-trend' : ''}"><span class="cal-day">${String(entry.day).padStart(2, '0')}</span><span class="cal-date">${escapeHtml(entry.dateLabel)}</span><span class="cal-title"><b>${escapeHtml(entry.seriesName)}${entry.trendTie ? ' 🔥' : ''}</b><small>${escapeHtml(entry.workingTitle)}</small>${entry.trendTie ? `<i class="cal-trend">트렌드: ${escapeHtml(entry.trendTie)}</i>` : ''}</span><span class="cal-hook">${escapeHtml(entry.hook)}</span><span class="cal-focus focus--${entry.focus}">${focusBadge(entry.focus)}</span></div>`).join('')}</div>
     </div>
 
     <div class="launch-grid">

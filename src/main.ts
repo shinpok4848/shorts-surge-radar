@@ -21,7 +21,7 @@ import {
   downloadCapCutPackage,
   updateProductionDraft,
 } from './export/capcut-package';
-import { generateLaunchKit } from './launch/launch-kit';
+import { generateLaunchKit, toTrendSignals } from './launch/launch-kit';
 import type {
   AppState,
   ChannelDataset,
@@ -305,7 +305,7 @@ async function searchMarket(filters: DashboardFilters): Promise<void> {
   try {
     const videos = await fetchAuthenticatedMarketTrends(
       session.accessToken,
-      filters.query || 'shorts',
+      filters.query,
       filters.region,
       filters.periodHours,
     );
@@ -468,12 +468,16 @@ function buildLaunchKit(inputs: LaunchInputs): void {
   const startDateLocal = inputs.startDateLocal || new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
   const normalized: LaunchInputs = { ...inputs, startDateLocal };
   try {
-    const launchKit = generateLaunchKit(normalized);
+    const trendSignals = toTrendSignals(state.marketVideos);
+    const launchKit = generateLaunchKit(normalized, state.marketFilters.region, trendSignals);
+    const trendNote = trendSignals.length
+      ? `${state.marketFilters.region === 'KR' ? '대한민국' : state.marketFilters.region} 시장 레이더의 급상승 주제 ${trendSignals.length}개를 캘린더에 접목했습니다.`
+      : '시장 레이더를 먼저 실행하면 지금 뜨는 주제가 캘린더에 자동 접목됩니다.';
     update({
       launchInputs: normalized,
       launchKit,
       error: null,
-      notice: { tone: 'success', message: '숏츠 채널 런치 킷을 만들었습니다. 첫 주 실행 계획부터 시작하세요.' },
+      notice: { tone: 'success', message: `숏츠 채널 런치 킷을 만들었습니다. ${trendNote}` },
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (error) {

@@ -3,6 +3,7 @@ import type {
   ChannelProfile,
   ChannelVideo,
   ContentKind,
+  PublishDraft,
   RetentionPoint,
   TrafficSource,
   VideoMetrics,
@@ -476,4 +477,151 @@ export async function fetchAuthenticatedMarketTrends(
     maxResults: 50,
     publishedAfter,
   });
+}
+
+
+export interface YouTubeUploadResult {
+  videoId: string;
+  title: string;
+  privacyStatus: string;
+  publishAt: string | null;
+  scheduledAccepted: boolean;
+}
+
+function uploadError(status: number, body: string): OwnerDataError {
+  let payload: ApiErrorPayload | null = null;
+  try {
+    payload = JSON.parse(body) as ApiErrorPayload;
+  } catch {
+    // The API may return an empty response for a network/proxy failure.
+  }
+  const reason = payload?.error?.errors?.[0]?.reason ?? payload?.error?.status ?? 'UPLOAD_FAILED';
+  if (status === 401) return new OwnerDataError('업로드 권한이 만료됐습니다. 채널을 다시 연결해 주세요.', 'GOOGLE_SESSION_EXPIRED', status);
+  if (status === 403 && reason === 'insufficientPermissions') {
+    return new OwnerDataError('youtube.upload 권한이 필요합니다. Google 채널을 다시 연결하고 업로드 권한을 승인해 주세요.', reason, status);
+  }
+  if (status === 403) {
+    return new OwnerDataError(
+      payload?.error?.message ?? 'YouTube 업로드가 거부됐습니다. API 프로젝트 제한과 채널 권한을 확인해 주세요.',
+      reason,
+      status,
+    );
+  }
+  return new OwnerDataError(payload?.error?.message ?? 'YouTube 영상 업로드에 실패했습니다.', reason, status);
+}
+
+function initializeResumableUpload(
+  accessToken: string,
+  file: File,
+  draft: PublishDraft,
+): Promise<string> {
+  const scheduledAt = draft.mode === 'scheduled' ? new Date(draft.scheduledAtLocal) : null;
+  const body = {
+    snippet: {
+      title: draft.title.trim(),
+      description: draft.description.trim(),
+      tags: draft.tags,
+      categoryId: '22',
+    },
+    status: {
+      privacyStatus: 'private',
+      selfDeclaredMadeForKids: draft.madeForKids,
+      containsSyntheticMedia: draft.containsSyntheticMedia,
+      ...(scheduledAt ? { publishAt: scheduledAt.toISOString() } : {}),
+    },
+  };
+
+  return fetch(`${DATA_API_ROOT.replace('/youtube/v3', '/upload/youtube/v3')}/videos?uploadType=resumable&part=snippet,status`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Length': String(file.size),
+      'X-Upload-Content-Type': file.type || 'video/mp4',
+    },
+    body: JSON.stringify(body),
+  }).then(async (response) => {
+    if (!response.ok) throw uploadError(response.status, await response.text());
+    const location = response.headers.get('Location');
+    if (!location) throw new OwnerDataError('YouTube가 업로드 세션 주소를 반환하지 않았습니다.', 'UPLOAD_SESSION_MISSING');
+    return location;
+  });
+}
+
+function sendUploadFile(
+  uploadUrl: string,
+  accessToken: string,
+  file: File,
+  onProgress: (progress: number) => void,
+): Promise<{ id?: string; snippet?: { title?: string }; status?: { privacyStatus?: string; publishAt?: string } }> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('PUT', uploadUrl);
+    request.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+    request.setRequestHeader('Content-Type', file.type || 'video/mp4');
+    request.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) onProgress(Math.min(100, Math.round(event.loaded / event.total * 100)));
+    });
+    request.addEventListener('load', () => {
+      if (request.status < 200 || request.status >= 300) {
+        reject(uploadError(request.status, request.responseText));
+        return;
+      }
+      try {
+        resolve(JSON.parse(request.responseText) as { id?: string; snippet?: { title?: string }; status?: { privacyStatus?: string; publishAt?: string } });
+      } catch {
+        reject(new OwnerDataError('업로드 응답을 해석하지 못했습니다.', 'UPLOAD_RESPONSE_INVALID'));
+      }
+    });
+    request.addEventListener('error', () => reject(new OwnerDataError('영상 업로드 중 네트워크 연결이 끊겼습니다.', 'UPLOAD_NETWORK_ERROR')));
+    request.addEventListener('abort', () => reject(new OwnerDataError('영상 업로드가 취소됐습니다.', 'UPLOAD_ABORTED')));
+    request.send(file);
+  });
+}
+
+export async function uploadYouTubeVideo(
+  accessToken: string,
+  file: File,
+  draft: PublishDraft,
+  onProgress: (progress: number) => void,
+): Promise<YouTubeUploadResult> {
+  if (!file.size) throw new OwnerDataError('업로드할 영상 파일이 비어 있습니다.', 'UPLOAD_FILE_EMPTY');
+  if (!file.type.startsWith('video/') && !/\.(mp4|mov|m4v|webm)$/i.test(file.name)) {
+    throw new OwnerDataError('MP4, MOV, M4V 또는 WebM 영상 파일을 선택해 주세요.', 'UPLOAD_FILE_TYPE');
+  }
+  if (!draft.title.trim() || draft.title.trim().length > 100) {
+    throw new OwnerDataError('YouTube 제목은 1~100자로 입력해 주세요.', 'UPLOAD_TITLE_INVALID');
+  }
+  if (draft.description.length > 5000) {
+    throw new OwnerDataError('YouTube 설명은 5,000자 이하여야 합니다.', 'UPLOAD_DESCRIPTION_INVALID');
+  }
+  if (draft.mode === 'scheduled') {
+    const publishTime = Date.parse(draft.scheduledAtLocal);
+    if (!Number.isFinite(publishTime) || publishTime < Date.now() + 15 * 60_000) {
+      throw new OwnerDataError('예약 시각은 현재보다 최소 15분 이후로 설정해 주세요.', 'UPLOAD_SCHEDULE_INVALID');
+    }
+    if (!draft.auditConfirmed) {
+      throw new OwnerDataError(
+        '예약 공개는 YouTube API 프로젝트 감사 완료 확인이 필요합니다. 미완료 프로젝트는 비공개 업로드를 선택하세요.',
+        'UPLOAD_AUDIT_CONFIRMATION_REQUIRED',
+      );
+    }
+  }
+
+  const uploadUrl = await initializeResumableUpload(accessToken, file, draft);
+  onProgress(1);
+  const video = await sendUploadFile(uploadUrl, accessToken, file, onProgress);
+  if (!video.id) throw new OwnerDataError('업로드는 끝났지만 YouTube 영상 ID를 받지 못했습니다.', 'UPLOAD_VIDEO_ID_MISSING');
+  const expectedPublishAt = draft.mode === 'scheduled' ? new Date(draft.scheduledAtLocal).toISOString() : null;
+  const actualPublishAt = video.status?.publishAt ?? null;
+  return {
+    videoId: video.id,
+    title: video.snippet?.title ?? draft.title,
+    privacyStatus: video.status?.privacyStatus ?? 'private',
+    publishAt: actualPublishAt,
+    scheduledAccepted: draft.mode === 'scheduled'
+      ? Boolean(actualPublishAt && expectedPublishAt && Date.parse(actualPublishAt) === Date.parse(expectedPublishAt))
+      : false,
+  };
 }

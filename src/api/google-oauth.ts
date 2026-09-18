@@ -2,6 +2,7 @@ const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client';
 const YOUTUBE_SCOPES = [
   'https://www.googleapis.com/auth/youtube.readonly',
   'https://www.googleapis.com/auth/yt-analytics.readonly',
+  'https://www.googleapis.com/auth/youtube.upload',
 ].join(' ');
 
 interface TokenResponse {
@@ -46,7 +47,6 @@ export class GoogleOAuthError extends Error {
 }
 
 let scriptPromise: Promise<void> | null = null;
-let currentSession: GoogleSession | null = null;
 
 function loadGoogleIdentityServices(): Promise<void> {
   if (window.google?.accounts?.oauth2) return Promise.resolve();
@@ -76,7 +76,7 @@ function validateClientId(clientId: string): string {
   const clean = clientId.trim();
   if (!clean) {
     throw new GoogleOAuthError(
-      'Google OAuth 클라이언트가 아직 설정되지 않았습니다. 운영 OAuth 설정이 완료되어야 로그인할 수 있습니다.',
+      'Google OAuth 클라이언트가 아직 설정되지 않았습니다.',
       'GOOGLE_OAUTH_NOT_CONFIGURED',
     );
   }
@@ -113,11 +113,10 @@ export async function connectGoogleChannel(clientId: string): Promise<GoogleSess
           return;
         }
         settled = true;
-        currentSession = {
+        resolve({
           accessToken: response.access_token,
           expiresAt: Date.now() + Math.max(60, response.expires_in ?? 3600) * 1000,
-        };
-        resolve(currentSession);
+        });
       },
       error_callback: (error) => {
         const code = error.type === 'popup_closed' ? 'GOOGLE_POPUP_CLOSED' : 'GOOGLE_POPUP_FAILED';
@@ -127,18 +126,15 @@ export async function connectGoogleChannel(clientId: string): Promise<GoogleSess
         finishError(new GoogleOAuthError(message, code));
       },
     });
-    client.requestAccessToken({ prompt: 'consent' });
+    client.requestAccessToken({ prompt: 'select_account consent' });
   });
 }
 
-export function activeGoogleSession(): GoogleSession | null {
-  if (!currentSession || currentSession.expiresAt <= Date.now() + 30_000) return null;
-  return currentSession;
+export function isGoogleSessionActive(session: GoogleSession | null | undefined): session is GoogleSession {
+  return Boolean(session && session.expiresAt > Date.now() + 30_000);
 }
 
-export async function disconnectGoogleChannel(): Promise<void> {
-  const token = currentSession?.accessToken;
-  currentSession = null;
-  if (!token || !window.google?.accounts?.oauth2) return;
-  await new Promise<void>((resolve) => window.google?.accounts?.oauth2?.revoke(token, resolve));
+export async function revokeGoogleSession(session: GoogleSession | null | undefined): Promise<void> {
+  if (!session?.accessToken || !window.google?.accounts?.oauth2) return;
+  await new Promise<void>((resolve) => window.google?.accounts?.oauth2?.revoke(session.accessToken, resolve));
 }

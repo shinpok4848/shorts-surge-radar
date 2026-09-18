@@ -42,6 +42,9 @@ export interface AppActions {
   onGenerateLaunchKit: (inputs: LaunchInputs) => void;
   onLaunchFromMarket: () => void;
   onProduceFromLaunch: () => void;
+  onResetMarket: () => void;
+  onResetLaunch: () => void;
+  onSetMarketPage: (page: number) => void;
 }
 
 import { NICHE_BLUEPRINTS } from '../launch/niches';
@@ -598,6 +601,10 @@ function focusBadge(focus: CalendarEntry['focus']): string {
   return { reach: '도달', retention: '유지', engagement: '반응', conversion: '전환' }[focus];
 }
 
+function confidenceLabel(confidence: LaunchKit['marketInsights']['confidence']): string {
+  return { high: '높음', medium: '중간', exploratory: '탐색' }[confidence];
+}
+
 function renderLaunchForm(state: AppState): string {
   const inputs = state.launchInputs;
   return `<section class="launch-hero">
@@ -619,8 +626,15 @@ function renderLaunchForm(state: AppState): string {
 }
 
 function renderLaunchKit(kit: LaunchKit): string {
+  const insights = kit.marketInsights;
   return `<section class="launch-result">
-    <header class="launch-result-head"><div><p class="eyebrow accent">LAUNCH BLUEPRINT / ${escapeHtml(kit.niche.label)} · ${escapeHtml(kit.regionLabel)}</p><h1>${escapeHtml(kit.channelPromise)}</h1><p>대상 시청자: ${escapeHtml(kit.niche.audience)} · 권장 수익화 경로: ${escapeHtml(kit.niche.monetizationPath)}</p></div><button class="quiet-button" id="launch-reset">다시 설계</button></header>
+    <header class="launch-result-head"><div><p class="eyebrow accent">LAUNCH BLUEPRINT / ${escapeHtml(kit.niche.label)} · ${escapeHtml(kit.regionLabel)}</p><h1>${escapeHtml(kit.channelPromise)}</h1><p>대상 시청자: ${escapeHtml(kit.niche.audience)} · 권장 수익화 경로: ${escapeHtml(kit.niche.monetizationPath)}</p></div><button class="quiet-button" id="launch-reset">전체 초기화</button></header>
+
+    <section class="auto-plan-panel">
+      <div class="auto-plan-primary"><p class="eyebrow">AUTO MARKET PLAN</p><span>자동 선정 주제</span><h2>${escapeHtml(insights.primaryTopic)}</h2><div><b>신뢰도 ${confidenceLabel(insights.confidence)}</b><b>${insights.analyzedVideos}개 영상 분석</b><b>${insights.distinctChannels}개 채널 근거</b></div></div>
+      <div class="auto-plan-topics"><p class="eyebrow">STRONG TOPICS</p>${insights.topics.slice(0, 5).map((topic, index) => `<article><span>${String(index + 1).padStart(2, '0')}</span><div><b>${escapeHtml(topic.topic)}</b><small>${topic.supportCount}개 영상 · ${topic.distinctChannels}개 채널 · 점수 ${topic.score.toFixed(1)}</small></div><em>${confidenceLabel(topic.confidence)}</em></article>`).join('') || '<p>시장 데이터가 없어 입력 주제로 시작했습니다.</p>'}</div>
+      <div class="auto-plan-structures"><p class="eyebrow">WINNING STRUCTURES</p>${insights.structures.map((structure) => `<article><b>${escapeHtml(structure.label)}</b><span>${structure.supportCount}개 인기 영상에서 반복</span><small>${structure.evidenceTitles.slice(0, 2).map(escapeHtml).join(' · ')}</small></article>`).join('') || '<p>성과 구조를 탐색 중입니다.</p>'}</div>
+    </section>
 
     <div class="dashboard-block">
       <div class="block-heading"><div><p class="eyebrow">TREND TRACKING / ${escapeHtml(kit.regionLabel)}</p><h2>지금 뜨는 주제 추종</h2></div><span>${kit.trendSignals.length ? `${kit.trendSignals.length}개 신호 반영` : '시장 레이더 미실행'}</span></div>
@@ -648,7 +662,7 @@ function renderLaunchKit(kit: LaunchKit): string {
     <div class="dashboard-block">
       <div class="block-heading"><div><p class="eyebrow">30-DAY CALENDAR</p><h2>발행 캘린더</h2></div><span>같은 시간대 일관 발행</span></div>
       <div class="calendar-head"><span>#</span><span>날짜</span><span>시리즈 · 작업 제목</span><span>훅</span><span>목표</span></div>
-      <div class="calendar-rows">${kit.calendar.map((entry) => `<div class="calendar-row ${entry.trendTie ? 'is-trend' : ''}"><span class="cal-day">${String(entry.day).padStart(2, '0')}</span><span class="cal-date">${escapeHtml(entry.dateLabel)}</span><span class="cal-title"><b>${escapeHtml(entry.seriesName)}${entry.trendTie ? ' 🔥' : ''}</b><small>${escapeHtml(entry.workingTitle)}</small>${entry.trendTie ? `<i class="cal-trend">트렌드: ${escapeHtml(entry.trendTie)}</i>` : ''}</span><span class="cal-hook">${escapeHtml(entry.hook)}</span><span class="cal-focus focus--${entry.focus}">${focusBadge(entry.focus)}</span></div>`).join('')}</div>
+      <div class="calendar-rows">${kit.calendar.map((entry) => `<div class="calendar-row ${entry.trendTie ? 'is-trend' : ''}"><span class="cal-day">${String(entry.day).padStart(2, '0')}</span><span class="cal-date">${escapeHtml(entry.dateLabel)}</span><span class="cal-title"><b>${escapeHtml(entry.seriesName)}${entry.trendTie ? ' 🔥' : ''}</b><small>${escapeHtml(entry.workingTitle)}</small>${entry.trendTie ? `<i class="cal-trend">트렌드: ${escapeHtml(entry.trendTie)} · 구조: ${escapeHtml(entry.inferredStructure ?? '트렌드 재해석')}</i>` : ''}</span><span class="cal-hook">${escapeHtml(entry.hook)}</span><span class="cal-focus focus--${entry.focus}">${focusBadge(entry.focus)}</span></div>`).join('')}</div>
     </div>
 
     <div class="launch-grid">
@@ -695,17 +709,28 @@ function marketCard(video: RankedShort): string {
 }
 
 function renderMarket(state: AppState): string {
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(state.marketVideos.length / pageSize));
+  const currentPage = Math.min(totalPages, Math.max(1, state.marketPage));
+  const start = (currentPage - 1) * pageSize;
+  const visibleVideos = state.marketVideos.slice(start, start + pageSize);
+  const meta = state.marketMeta;
   return `<main class="market-main">
-    <section class="market-hero"><p class="eyebrow accent">MARKET SIGNAL</p><h1>내 채널 밖의<br/><em>가속 신호</em>를 비교하세요.</h1><p>시장 레이더는 아이디어를 복사하는 목록이 아니라, 내 콘텐츠와 다른 주제·포장·속도를 비교하는 보조 도구입니다.</p></section>
+    <section class="market-hero"><p class="eyebrow accent">MARKET SIGNAL / TOP 200</p><h1>내 채널 밖의<br/><em>가속 신호</em>를 비교하세요.</h1><p>최대 200개 후보를 수집해 국가 언어와 60초 이하 조건으로 정제하고, 전체 데이터로 강한 주제와 반복 구조를 자동 기획합니다.</p></section>
     <form id="market-form" class="market-form">
       <label><span>국가</span><select name="region">${[['KR', '대한민국'], ['US', '미국'], ['JP', '일본'], ['GB', '영국']].map(([value, label]) => `<option value="${value}" ${state.marketFilters.region === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
       <label><span>기간</span><select name="periodHours"><option value="24" ${state.marketFilters.periodHours === 24 ? 'selected' : ''}>24시간</option><option value="168" ${state.marketFilters.periodHours === 168 ? 'selected' : ''}>7일</option><option value="720" ${state.marketFilters.periodHours === 720 ? 'selected' : ''}>30일</option></select></label>
-      <label class="market-query"><span>주제</span><input name="query" value="${escapeHtml(state.marketFilters.query)}" placeholder="예: AI, 요리, 운동"/></label>
-      <button class="primary-button" type="submit" ${state.marketLoading ? 'disabled' : ''}>시장 스캔</button>
+      <label class="market-query"><span>주제</span><input name="query" value="${escapeHtml(state.marketFilters.query)}" placeholder="비우면 국가별 쇼츠 전체"/></label>
+      <button class="primary-button" type="submit" ${state.marketLoading ? 'disabled' : ''}>최대 200위 스캔</button>
+      <button class="secondary-button market-reset" id="market-reset" type="button">초기화</button>
     </form>
+    <p class="market-quota-note">최대 4페이지를 조회하므로 스캔 1회당 search.list 할당량을 최대 4회 사용합니다. 결과 수는 YouTube 제공량과 언어·길이 필터에 따라 200개보다 적을 수 있습니다.</p>
     ${state.marketError ? `<div class="notice notice--warning">${escapeHtml(state.marketError)}</div>` : ''}
-    ${state.marketVideos.length ? `<aside class="market-bridge"><div><strong>이 트렌드로 채널 전략을 만들까요?</strong><span>방금 스캔한 ${escapeHtml(state.marketFilters.region === 'KR' ? '대한민국' : state.marketFilters.region)} 급상승 주제를 채널 런치 캘린더에 자동 접목합니다.</span></div><button class="primary-button" id="market-to-launch">채널 런치로 보내기 →</button></aside>` : ''}
-    <section class="market-list"><div class="block-heading"><div><p class="eyebrow">SURGE RANKING</p><h2>지금 가속 중인 영상</h2></div><span>OWNER OAUTH DATA</span></div>${state.marketVideos.length ? state.marketVideos.map(marketCard).join('') : '<div class="unavailable-panel market-empty"><strong>주제를 입력해 시장 스캔을 시작하세요</strong><p>현재 채널과 같은 시청자 관심사를 가진 최근 인기 영상을 Google 인증으로 검색합니다. 검색은 YouTube API 할당량을 사용합니다.</p></div>'}</section>
+    ${state.marketVideos.length ? `<aside class="market-bridge"><div><strong>이 데이터로 강한 주제와 구성을 자동 기획할까요?</strong><span>${meta?.displayedCount ?? state.marketVideos.length}개 결과 전체에서 반복 주제·채널 다양성·확산 점수·성과 제목 구조를 분석합니다.</span></div><button class="primary-button" id="market-to-launch">자동 기획 후 채널 런치 →</button></aside>` : ''}
+    <section class="market-list"><div class="block-heading"><div><p class="eyebrow">SURGE RANKING</p><h2>지금 가속 중인 영상</h2></div><span>${meta ? `${meta.displayedCount}개 정제 · ${meta.candidateCount}개 후보 · ${meta.pagesFetched}페이지` : 'OWNER OAUTH DATA'}</span></div>
+      ${visibleVideos.length ? visibleVideos.map(marketCard).join('') : '<div class="unavailable-panel market-empty"><strong>시장 스캔을 시작하세요</strong><p>국가와 기간을 고르면 최대 200개 후보에서 실제 60초 이하 지역 언어 영상을 선별합니다.</p></div>'}
+      ${state.marketVideos.length ? `<nav class="market-pagination" aria-label="시장 순위 페이지"><button data-market-page="${currentPage - 1}" ${currentPage <= 1 ? 'disabled' : ''}>← 이전</button><span>${start + 1}–${Math.min(start + pageSize, state.marketVideos.length)} / ${state.marketVideos.length} · ${currentPage}/${totalPages} 페이지</span><button data-market-page="${currentPage + 1}" ${currentPage >= totalPages ? 'disabled' : ''}>다음 →</button></nav>` : ''}
+    </section>
   </main>`;
 }
 
@@ -791,7 +816,11 @@ function bindActions(root: HTMLElement, actions: AppActions): void {
     if (label) label.textContent = uploadInput.files?.[0]?.name ?? 'MP4 / MOV / WebM 선택';
   });
 
-  root.querySelector('#launch-reset')?.addEventListener('click', () => actions.onNavigate('launch'));
+  root.querySelector('#launch-reset')?.addEventListener('click', actions.onResetLaunch);
+  root.querySelector('#market-reset')?.addEventListener('click', actions.onResetMarket);
+  root.querySelectorAll<HTMLButtonElement>('[data-market-page]').forEach((button) => button.addEventListener('click', () => {
+    actions.onSetMarketPage(Number(button.dataset.marketPage));
+  }));
   root.querySelector('#market-to-launch')?.addEventListener('click', actions.onLaunchFromMarket);
   root.querySelector('#launch-to-produce')?.addEventListener('click', actions.onProduceFromLaunch);
   root.querySelector<HTMLFormElement>('#launch-form')?.addEventListener('submit', (event) => {

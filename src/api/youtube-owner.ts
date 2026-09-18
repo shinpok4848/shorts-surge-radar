@@ -434,26 +434,53 @@ function cleanSearchQuery(value: string): string {
   return value.replace(/[#|<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 }
 
+export interface AuthenticatedVideoSearchResult {
+  videos: ChannelVideo[];
+  candidateCount: number;
+  pagesFetched: number;
+}
+
 async function searchAuthenticatedVideos(
   accessToken: string,
   query: string,
   region: string,
   options: { publishedAfter?: string; maxResults?: number } = {},
-): Promise<ChannelVideo[]> {
-  const response = await dataRequest<ApiErrorPayload & { items?: Array<{ id?: { videoId?: string } }> }>('search', {
-    part: 'snippet',
-    type: 'video',
-    order: 'viewCount',
-    maxResults: String(options.maxResults ?? 20),
-    regionCode: region,
-    relevanceLanguage: relevanceLanguageForRegion(region),
-    q: cleanSearchQuery(query) || defaultQueryForRegion(region),
-    ...(options.publishedAfter ? { publishedAfter: options.publishedAfter } : {}),
-  }, accessToken);
-  const ids = (response.items ?? [])
-    .map((item) => item.id?.videoId)
-    .filter((videoId): videoId is string => Boolean(videoId));
-  return ownedVideoDetails(ids, accessToken);
+): Promise<AuthenticatedVideoSearchResult> {
+  const target = Math.min(200, Math.max(1, options.maxResults ?? 20));
+  const ids = new Set<string>();
+  let nextPageToken: string | undefined;
+  let pagesFetched = 0;
+
+  do {
+    const response = await dataRequest<ApiErrorPayload & {
+      nextPageToken?: string;
+      items?: Array<{ id?: { videoId?: string } }>;
+    }>('search', {
+      part: 'snippet',
+      type: 'video',
+      order: 'viewCount',
+      maxResults: String(Math.min(50, target - ids.size)),
+      regionCode: region,
+      relevanceLanguage: relevanceLanguageForRegion(region),
+      q: cleanSearchQuery(query) || defaultQueryForRegion(region),
+      ...(options.publishedAfter ? { publishedAfter: options.publishedAfter } : {}),
+      ...(nextPageToken ? { pageToken: nextPageToken } : {}),
+    }, accessToken);
+    pagesFetched += 1;
+    for (const item of response.items ?? []) {
+      const videoId = item.id?.videoId;
+      if (videoId) ids.add(videoId);
+      if (ids.size >= target) break;
+    }
+    nextPageToken = response.nextPageToken;
+  } while (nextPageToken && ids.size < target && pagesFetched < 4);
+
+  const uniqueIds = [...ids].slice(0, target);
+  return {
+    videos: await ownedVideoDetails(uniqueIds, accessToken),
+    candidateCount: uniqueIds.length,
+    pagesFetched,
+  };
 }
 
 function relevanceLanguageForRegion(region: string): string {
@@ -472,8 +499,8 @@ export async function fetchOwnedChannelBenchmarks(
   ownChannelId: string,
   region = 'KR',
 ): Promise<ChannelVideo[]> {
-  const videos = await searchAuthenticatedVideos(accessToken, query, region, { maxResults: 25 });
-  return videos.filter((video) => video.channelId !== ownChannelId).slice(0, 12);
+  const result = await searchAuthenticatedVideos(accessToken, query, region, { maxResults: 25 });
+  return result.videos.filter((video) => video.channelId !== ownChannelId).slice(0, 12);
 }
 
 export async function fetchAuthenticatedMarketTrends(
@@ -481,11 +508,11 @@ export async function fetchAuthenticatedMarketTrends(
   query: string,
   region: string,
   hours: number,
-): Promise<ChannelVideo[]> {
+): Promise<AuthenticatedVideoSearchResult> {
   const boundedHours = Math.min(720, Math.max(24, hours));
   const publishedAfter = new Date(Date.now() - boundedHours * 3_600_000).toISOString();
   return searchAuthenticatedVideos(accessToken, query, region, {
-    maxResults: 50,
+    maxResults: 200,
     publishedAfter,
   });
 }

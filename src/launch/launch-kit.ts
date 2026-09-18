@@ -3,12 +3,15 @@ import type {
   HookTemplate,
   LaunchInputs,
   LaunchKit,
+  MarketLaunchInsights,
   NicheBlueprint,
   RankedShort,
   RegionCode,
   RetentionCheck,
   SeriesConcept,
   TrendSignal,
+  TrendStructureCandidate,
+  TrendTopicCandidate,
 } from '../types';
 import { blueprintById } from './niches';
 import { titleMatchesRegion } from './region-language';
@@ -48,6 +51,163 @@ function keywordFromTitle(title: string, preferHangul: boolean): string {
   return meaningful ?? title.slice(0, 12).trim();
 }
 
+interface TopicAccumulator {
+  score: number;
+  videos: Set<string>;
+  channels: Set<string>;
+  evidence: string[];
+}
+
+interface StructureDefinition {
+  id: TrendStructureCandidate['id'];
+  label: string;
+  test: (title: string) => boolean;
+}
+
+const STRUCTURE_DEFINITIONS: StructureDefinition[] = [
+  { id: 'numbered', label: '숫자·목록형', test: (title) => /\d+|[세네다섯여러]\s*가지|단계|개/.test(title) },
+  { id: 'mistake-fix', label: '실수→해결형', test: (title) => /실수|문제|해결|고치|방법|팁|꿀팁|주의/.test(title) },
+  { id: 'before-after', label: '전후·변화형', test: (title) => /전후|비포|애프터|바뀌|변화|달라|전\s*vs\s*후/i.test(title) },
+  { id: 'explainer', label: '질문·이유형', test: (title) => /왜|이유|어떻게|무엇|\?|알아야/.test(title) },
+  { id: 'contrast-reaction', label: '반전·대조형', test: (title) => /반전|충격|의외|결국|vs|대결|비교|결말/i.test(title) },
+];
+
+function normalizedTopicToken(value: string, region: RegionCode): string | null {
+  const token = value
+    .replace(/^#+/, '')
+    .replace(/[^\p{L}\p{N}]/gu, '')
+    .normalize('NFC')
+    .toLocaleLowerCase();
+  if (token.length < 2 || token.length > 18 || STOP_WORDS.has(token)) return null;
+  if (region === 'KR' && !HANGUL.test(token)) return null;
+  return token;
+}
+
+function inferenceTokens(video: RankedShort, region: RegionCode): string[] {
+  const titleTokens = candidateTokens(video.title)
+    .map((token) => normalizedTopicToken(token, region))
+    .filter((token): token is string => Boolean(token));
+  const tagTokens = video.tags
+    .map((tag) => normalizedTopicToken(tag, region))
+    .filter((token): token is string => Boolean(token));
+  const singles = [...new Set([...tagTokens, ...titleTokens])];
+  const bigrams = titleTokens.slice(0, 6)
+    .slice(0, -1)
+    .map((token, index) => `${token} ${titleTokens[index + 1]}`)
+    .filter((phrase) => phrase.length <= 22);
+  return [...singles, ...bigrams];
+}
+
+function trendWeight(video: RankedShort): number {
+  const scoreWeight = .8 + video.score / 100;
+  const velocityWeight = Math.min(1.2, Math.log10(video.velocity + 1) / 5);
+  const engagementWeight = Math.min(.6, video.engagementRate * 6);
+  const rankWeight = Math.max(.15, 1 - (video.rank - 1) / 200);
+  return scoreWeight + velocityWeight + engagementWeight + rankWeight;
+}
+
+function topicConfidence(supportCount: number, distinctChannels: number): TrendTopicCandidate['confidence'] {
+  if (supportCount >= 4 && distinctChannels >= 3) return 'high';
+  if (supportCount >= 2 && distinctChannels >= 2) return 'medium';
+  return 'exploratory';
+}
+
+function recommendedNiche(structures: TrendStructureCandidate[]): string {
+  const strongest = structures[0]?.id;
+  if (strongest === 'before-after') return 'satisfying-process';
+  if (strongest === 'explainer' || strongest === 'numbered') return 'micro-education';
+  if (strongest === 'contrast-reaction') return 'reaction-opinion';
+  if (strongest === 'mistake-fix') return 'how-to-fix';
+  return 'daily-life-hack';
+}
+
+export function inferMarketLaunchInsights(
+  videos: RankedShort[],
+  region: RegionCode = 'KR',
+  explicitQuery = '',
+): MarketLaunchInsights {
+  const matching = videos.filter((video) => titleMatchesRegion(video.title, region)).slice(0, 120);
+  const topicMap = new Map<string, TopicAccumulator>();
+  const structureMap = new Map<TrendStructureCandidate['id'], {
+    definition: StructureDefinition;
+    score: number;
+    videos: Set<string>;
+    evidence: string[];
+  }>();
+
+  for (const video of matching) {
+    const weight = trendWeight(video);
+    const channel = video.channelTitle || video.videoId;
+    for (const topic of new Set(inferenceTokens(video, region))) {
+      const current = topicMap.get(topic) ?? {
+        score: 0,
+        videos: new Set<string>(),
+        channels: new Set<string>(),
+        evidence: [],
+      };
+      // Cap repeated contribution per video and reward evidence from distinct channels.
+      current.score += weight * (topic.includes(' ') ? 1.18 : 1);
+      current.videos.add(video.videoId);
+      current.channels.add(channel);
+      if (current.evidence.length < 3) current.evidence.push(video.title);
+      topicMap.set(topic, current);
+    }
+
+    for (const definition of STRUCTURE_DEFINITIONS) {
+      if (!definition.test(video.title)) continue;
+      const current = structureMap.get(definition.id) ?? {
+        definition,
+        score: 0,
+        videos: new Set<string>(),
+        evidence: [],
+      };
+      current.score += weight;
+      current.videos.add(video.videoId);
+      if (current.evidence.length < 3) current.evidence.push(video.title);
+      structureMap.set(definition.id, current);
+    }
+  }
+
+  const topics = [...topicMap.entries()]
+    .map(([topic, data]) => ({
+      topic,
+      score: Math.round((data.score + data.channels.size * 1.5 + data.videos.size) * 10) / 10,
+      confidence: topicConfidence(data.videos.size, data.channels.size),
+      supportCount: data.videos.size,
+      distinctChannels: data.channels.size,
+      evidenceTitles: data.evidence,
+    } satisfies TrendTopicCandidate))
+    .sort((a, b) => b.score - a.score || b.distinctChannels - a.distinctChannels)
+    .filter((topic, index, all) => !all.slice(0, index).some((earlier) => earlier.topic.includes(topic.topic)))
+    .slice(0, 8);
+
+  const structures = [...structureMap.values()]
+    .map((data) => ({
+      id: data.definition.id,
+      label: data.definition.label,
+      score: Math.round(data.score * 10) / 10,
+      supportCount: data.videos.size,
+      evidenceTitles: data.evidence,
+    } satisfies TrendStructureCandidate))
+    .sort((a, b) => b.score - a.score || b.supportCount - a.supportCount)
+    .slice(0, 4);
+
+  const cleanQuery = explicitQuery.trim();
+  const queryIsGeneric = !cleanQuery || /^(쇼츠|shorts?|ショート)$/i.test(cleanQuery);
+  const primary = queryIsGeneric ? topics[0]?.topic : cleanQuery;
+  const confidence = topics[0]?.confidence ?? 'exploratory';
+  return {
+    primaryTopic: primary || (region === 'KR' ? '생활 꿀팁' : 'daily tips'),
+    confidence,
+    recommendedNicheId: recommendedNiche(structures),
+    topics,
+    structures,
+    analyzedVideos: matching.length,
+    distinctChannels: new Set(matching.map((video) => video.channelTitle || video.videoId)).size,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 export function toTrendSignals(videos: RankedShort[], region: RegionCode = 'KR'): TrendSignal[] {
   const preferHangul = region === 'KR';
   return videos
@@ -84,8 +244,14 @@ function topicWords(topic: string, fallback: string[]): string[] {
   return words.length ? words.slice(0, 5) : fallback;
 }
 
-function buildSeries(niche: NicheBlueprint, subject: string): SeriesConcept[] {
-  return niche.formats.slice(0, 3).map((format, index) => {
+function buildSeries(
+  niche: NicheBlueprint,
+  subject: string,
+  insights: MarketLaunchInsights,
+): SeriesConcept[] {
+  const inferredFormats = insights.structures.map((structure) => structure.label);
+  const formats = [...new Set([...inferredFormats, ...niche.formats])].slice(0, 3);
+  return formats.map((format, index) => {
     const names = [`${subject} 바로잡기`, `${subject} 3초 정리`, `${subject} 실전편`];
     return {
       name: names[index] ?? `${subject} 시리즈 ${index + 1}`,
@@ -130,6 +296,7 @@ function buildCalendar(
   subject: string,
   inputs: LaunchInputs,
   trends: TrendSignal[],
+  structures: TrendStructureCandidate[],
 ): CalendarEntry[] {
   const start = isoDate(inputs.startDateLocal);
   const perWeek = inputs.cadencePerWeek;
@@ -154,8 +321,9 @@ function buildCalendar(
       const trend = trends.length && entries.length % 3 === 2
         ? trends[Math.floor(entries.length / 3) % trends.length]
         : null;
+      const structure = structures[entries.length % Math.max(1, structures.length)];
       const workingTitle = trend
-        ? `${subject} × ${trend.keyword} · 지금 뜨는 주제 접목`
+        ? `${subject} × ${trend.keyword} · ${structure?.label ?? '트렌드 재해석'}`
         : `${subject} · ${seriesConcept.sampleEpisodes[entries.length % seriesConcept.sampleEpisodes.length]}`;
       entries.push({
         day: entries.length + 1,
@@ -165,7 +333,10 @@ function buildCalendar(
         hook: hook.example,
         focus: trend ? 'reach' : focus,
         cta: ctaForFocus(trend ? 'reach' : focus),
-        ...(trend ? { trendTie: `${trend.keyword} (${trend.channelTitle})` } : {}),
+        ...(trend ? {
+          trendTie: `${trend.keyword} (${trend.channelTitle})`,
+          inferredStructure: structure?.label ?? '트렌드 재해석',
+        } : {}),
       });
       dayCounter += 1;
     }
@@ -189,27 +360,40 @@ export function generateLaunchKit(
   inputs: LaunchInputs,
   region: RegionCode = 'KR',
   trendSignals: TrendSignal[] = [],
+  marketInsights?: MarketLaunchInsights,
 ): LaunchKit {
+  const fallbackInsights: MarketLaunchInsights = {
+    primaryTopic: inputs.topic.trim() || (region === 'KR' ? '생활 꿀팁' : 'daily tips'),
+    confidence: 'exploratory',
+    recommendedNicheId: inputs.nicheId,
+    topics: [],
+    structures: [],
+    analyzedVideos: 0,
+    distinctChannels: 0,
+    generatedAt: new Date().toISOString(),
+  };
+  const insights = marketInsights ?? fallbackInsights;
   const niche = blueprintById(inputs.nicheId);
   const fallback = niche.keywords.slice(0, 3);
-  const words = topicWords(inputs.topic, fallback);
+  const words = topicWords(inputs.topic || insights.primaryTopic, fallback);
   const subject = words.slice(0, 2).join(' ') || niche.label;
-  const series = buildSeries(niche, subject);
-  const calendar = buildCalendar(series, subject, inputs, trendSignals);
+  const series = buildSeries(niche, subject, insights);
+  const calendar = buildCalendar(series, subject, inputs, trendSignals, insights.structures);
   const regionLabel = REGION_LABELS[region] ?? region;
 
   return {
     niche,
     channelPromise: `${subject}에 대해 ${niche.promise}`,
     regionLabel,
+    marketInsights: insights,
     trendSignals,
     trendPlaybook: trendSignals.length
       ? [
-        `${regionLabel} 시장 레이더에서 지금 가속 중인 주제를 캘린더 3번째 슬롯마다 접목했습니다.`,
-        '뜨는 키워드는 24시간 안에 내 니치 관점으로 재해석해 발행 속도를 우선합니다.',
+        `${regionLabel} 상위 ${insights.analyzedVideos}개 영상·${insights.distinctChannels}개 채널을 분석해 “${insights.primaryTopic}”을 ${insights.confidence} 신뢰도 주제로 선정했습니다.`,
+        `성과가 반복된 제목 구조(${insights.structures.map((item) => item.label).join(', ') || '데이터 탐색 중'})를 시리즈와 트렌드 슬롯에 반영했습니다.`,
+        '뜨는 주제는 24시간 안에 내 니치 관점으로 재해석해 발행 속도를 우선합니다.',
         '트렌드 영상을 복제하지 말고, 같은 주제를 내 포맷·사례로 다시 만드세요.',
         '반응이 좋은 트렌드 접목 편은 즉시 3부작 시리즈로 확장합니다.',
-        '매일 시장 레이더를 다시 열어 새 급상승 키워드로 다음 트렌드 슬롯을 교체하세요.',
       ]
       : [
         `${regionLabel} 시장 레이더를 먼저 실행하면, 지금 뜨는 주제가 캘린더에 자동 접목됩니다.`,

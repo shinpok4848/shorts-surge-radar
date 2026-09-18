@@ -238,6 +238,13 @@ async function importCsv(files: File[]): Promise<void> {
 }
 
 function benchmarkQuery(video: ChannelVideo): string {
+  // Prefer the video's own tags (same-topic signal), then fall back to title keywords.
+  const tagQuery = video.tags
+    .map((tag) => tag.replace(/^#/, '').trim())
+    .filter((tag) => tag.length >= 2)
+    .slice(0, 3)
+    .join(' ');
+  if (tagQuery) return tagQuery;
   return video.title
     .replace(/[#|｜()[\]{}!?.,:;“”"']/g, ' ')
     .replace(/\s+/g, ' ')
@@ -490,6 +497,33 @@ function buildLaunchKit(inputs: LaunchInputs): void {
   }
 }
 
+function launchFromMarket(): void {
+  if (!state.marketVideos.length) {
+    update({ view: 'market', error: '먼저 시장 스캔을 실행해 트렌드 데이터를 만들어 주세요.' });
+    return;
+  }
+  // Carry the current market topic into the launch inputs so the kit reflects the scan.
+  const topic = state.marketFilters.query.trim() || state.launchInputs.topic;
+  const inputs: LaunchInputs = { ...state.launchInputs, topic };
+  update({ view: 'launch', launchInputs: inputs });
+  buildLaunchKit(inputs);
+}
+
+function produceFromLaunch(): void {
+  // Send the user to the production source list where the same scanned trend videos appear.
+  update({
+    view: 'produce',
+    productionDraft: null,
+    publishDraft: null,
+    upload: emptyUploadState(),
+    error: null,
+    notice: state.marketVideos.length
+      ? { tone: 'info', message: '지금 뜨는 트렌드 영상에서 원본 작업팩을 만들어 보세요.' }
+      : { tone: 'warning', message: '시장 레이더를 먼저 실행하면 트렌드 영상이 제작 소스로 채워집니다.' },
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function render(): void {
   renderApp(appRoot, state, {
     onNavigate: (view) => update({ view, error: null, notice: null }),
@@ -508,6 +542,8 @@ function render(): void {
     onDownloadProduction: downloadProduction,
     onPublishVideo: (file, draft, rightsConfirmed) => void publishVideo(file, draft, rightsConfirmed),
     onGenerateLaunchKit: buildLaunchKit,
+    onLaunchFromMarket: launchFromMarket,
+    onProduceFromLaunch: produceFromLaunch,
   });
 }
 

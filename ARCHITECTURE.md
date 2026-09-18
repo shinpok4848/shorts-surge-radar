@@ -1,66 +1,89 @@
-# Channel Pulse — Hybrid Channel Diagnosis Architecture
+# ROMANCE PULSE — Personal OAuth Architecture
 
-## Product goal
+## Goal
 
-Turn SHORTS PULSE from a trend list into an action-oriented YouTube channel diagnosis product. A creator can begin with only a channel URL, deepen the analysis by connecting the channel through Google OAuth, and complement unavailable reach metrics with a local YouTube Studio CSV import.
+Provide a private-data dashboard for the single YouTube channel `@낭만구조대` without receiving account passwords, storing API keys, or running a backend.
 
-## Data modes and trust
-
-| Mode | Authentication | Data available | Data not claimed |
-|---|---|---|---|
-| Public quick audit | Channel URL; operator API key in server secret | Public uploads, titles, descriptions, tags, duration, published time, views, likes, comments | Impressions, CTR, retention, traffic sources, subscriber conversion |
-| Owner deep audit | Google OAuth (`youtube.readonly`, `yt-analytics.readonly`) | Owned channel uploads plus views, watch time, average duration/percentage, engagement, subscriber gains/losses and traffic sources when supported | Metrics not returned by the API or still processing |
-| Studio CSV | Local browser file parsing | Exported columns such as impressions, CTR, watch time, average view duration/percentage, subscribers and content type | Any column absent from the uploaded export |
-| Demo | None | Fully labeled sample dataset for product exploration | Real channel performance |
-
-Every score and recommendation carries a data basis: `measured`, `public`, `inferred`, or `unavailable`. Missing metrics are never displayed as zero.
-
-## Deployment topology
+## Data flow
 
 ```text
-GitHub Pages frontend
-  ├─ channel URL ───────────────► serverless public API
-  │                                ├─ YouTube Data API v3
-  │                                ├─ API key in server secret
-  │                                └─ CDN cache + CORS allowlist
-  ├─ Google OAuth access token ─► YouTube Data API + Analytics API
-  │   (token remains in memory)
-  └─ Studio CSV ────────────────► local parser; file never uploaded
+Public GitHub Pages shell
+  └─ Google Identity Services popup
+       └─ short-lived OAuth access token (memory only)
+            ├─ YouTube Data API
+            │    ├─ channels.list(mine)
+            │    ├─ uploads playlist + all video details
+            │    ├─ related winner search
+            │    └─ market trend search
+            └─ YouTube Analytics API
+                 ├─ 365-day video metrics
+                 └─ traffic source report
+
+Optional Studio CSV
+  └─ parsed and merged in browser memory only
 ```
 
-The public API reference implementation lives in `worker/` and targets Cloudflare Workers. GitHub Pages cannot safely hold an operator API key or an OAuth refresh token.
+There is no application server, operator API key, password database, refresh-token database, or Client Secret.
 
-## Public API contract
+## Access controls
 
-### `GET /api/channel?url=<channel-url>`
+### Control 1: Google test-user allowlist
 
-Accepts a YouTube `/channel/UC…`, `/@handle`, `/user/name`, raw channel ID, or `@handle`. Returns a channel profile and upload metadata. The server follows the channel uploads playlist and batches video detail requests. Responses are cached for 15 minutes.
+The OAuth consent screen remains in Testing mode. Only the channel owner's Google email is registered as a Test user, so other Google accounts cannot authorize the client.
 
-### `GET /api/benchmarks?query=<topic>&channelId=<id>&region=KR`
+### Control 2: target channel verification
 
-Returns related public videos ordered by view count, excluding the audited channel. Called lazily for a selected video to reduce quota consumption.
+After authorization, the app retrieves `channels.list(mine=true)` and compares the returned channel with runtime configuration:
 
-### `GET /api/trends?query=<topic>&region=KR&hours=168`
+- If `targetChannelId` is set, the exact immutable `UC...` ID must match.
+- Otherwise the NFC-normalized, percent-decoded custom handle must equal `@낭만구조대`.
 
-Returns current market candidates for the secondary Market Radar tab.
+A mismatch revokes the token, clears state, and renders no channel data.
 
-## Diagnosis model
+### Control 3: no persisted tokens or channel data
 
-1. Normalize metrics within the same content format (video vs Shorts candidate).
-2. Compare views per active day against the channel median.
-3. Use measured CTR and retention when available; otherwise use metadata heuristics and label them inferred.
-4. Score packaging, retention, reach, engagement, conversion, and consistency separately.
-5. Generate evidence-led diagnoses before recommendations.
-6. Prioritize topic, packaging and opening/retention. Tags remain a low-impact supporting field.
+The access token is held in a module variable. It is not written to cookies, Local Storage, IndexedDB, logs, repository files, or analytics. Reload and logout discard it. CSV contents and diagnosis results also remain in the current browser tab.
 
-## Format classification
+## Public-shell boundary
 
-The YouTube Data API does not expose a reliable `isShort` field or video aspect ratio. Public/API-only data classifies uploads up to 180 seconds as `Shorts candidate`. A CSV content-type column can upgrade this to `verified`. The UI always exposes that confidence.
+GitHub Pages is a public static host. Anyone can load the login shell or inspect the public source, but source files contain no password, API key, Client Secret, token, or channel analytics. Google and the target-channel check protect actual data.
 
-## Privacy and security
+If hiding even the login shell becomes a requirement, move the same static build behind an identity-aware host such as Cloudflare Access. That is separate from protecting YouTube data and is not required for the current single-user data boundary.
 
-- OAuth access tokens are held in memory and discarded on reload/disconnect.
-- Studio CSV files are parsed only in the browser and are never sent to a server.
-- The public YouTube API key is stored only as a Worker secret.
-- Server responses include restrictive CORS headers and cache public responses.
-- Recommendations distinguish observed evidence from inference.
+## OAuth scopes
+
+- `youtube.readonly`: own channel metadata, uploads and authenticated public search
+- `yt-analytics.readonly`: owner Analytics reports
+
+No upload, edit, delete, revenue, or account-management scope is requested.
+
+## Metrics and trust
+
+- Owner API metrics are labeled measured.
+- Title/thumbnail heuristics are labeled inferred.
+- Missing data remains unavailable rather than becoming zero.
+- Studio CSV can add impressions, CTR and content-type evidence.
+- A video at or below 180 seconds is only a Shorts candidate until Studio content type verifies it.
+
+## Session behavior
+
+1. User opens the public shell.
+2. User explicitly clicks the Google login button.
+3. Google displays account and consent UI; the app never sees a password.
+4. App retrieves and verifies the channel before rendering any dashboard.
+5. API calls reuse the in-memory access token until expiry.
+6. Expiry prompts a new Google authorization; logout calls token revocation.
+
+## Build-time configuration
+
+`public/app-config.json` contains only public identifiers:
+
+```json
+{
+  "googleOAuthClientId": "",
+  "targetChannelHandle": "@낭만구조대",
+  "targetChannelId": ""
+}
+```
+
+The build embeds this JSON in `docs/index.html`. Secret values are prohibited.

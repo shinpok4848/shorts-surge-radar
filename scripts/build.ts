@@ -39,11 +39,11 @@ const html = `<!doctype html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="채널 URL, YouTube Analytics, Studio CSV를 결합해 영상별 병목과 다음 성장 행동을 진단합니다." />
+    <meta name="description" content="낭만구조대 채널 소유자 전용 YouTube Analytics 성장 진단 대시보드" />
     <meta name="theme-color" content="#090b0a" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <style>${css}</style>
-    <title>CHANNEL PULSE — 유튜브 채널 성장 진단</title>
+    <title>ROMANCE PULSE — 낭만구조대 전용 성장 진단</title>
   </head>
   <body>
     <div id="app"></div>
@@ -55,7 +55,6 @@ const html = `<!doctype html>
 
 await Bun.write(resolve(outputDirectory, 'index.html'), html);
 await Bun.write(resolve(outputDirectory, 'favicon.svg'), Bun.file(resolve(root, 'public/favicon.svg')));
-await Bun.write(resolve(outputDirectory, 'sample-studio.csv'), Bun.file(resolve(root, 'public/sample-studio.csv')));
 await cp(resolve(root, 'public/fonts'), resolve(outputDirectory, 'fonts'), { recursive: true });
 await Bun.write(resolve(outputDirectory, '.nojekyll'), '');
 

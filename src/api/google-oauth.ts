@@ -76,7 +76,7 @@ function validateClientId(clientId: string): string {
   const clean = clientId.trim();
   if (!clean) {
     throw new GoogleOAuthError(
-      'Google OAuth 클라이언트가 아직 설정되지 않았습니다. 지금은 Studio CSV 또는 데모 진단을 사용할 수 있습니다.',
+      'Google OAuth 클라이언트가 아직 설정되지 않았습니다. 운영 OAuth 설정이 완료되어야 로그인할 수 있습니다.',
       'GOOGLE_OAUTH_NOT_CONFIGURED',
     );
   }

@@ -1,4 +1,5 @@
 {
-  "publicApiBaseUrl": "",
-  "googleOAuthClientId": ""
+  "googleOAuthClientId": "",
+  "targetChannelHandle": "@낭만구조대",
+  "targetChannelId": ""
 }

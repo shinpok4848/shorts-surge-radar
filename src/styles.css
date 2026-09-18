@@ -89,8 +89,6 @@ img { display: block; }
 .entry-card h3 { margin: 0; font-size: 21px; letter-spacing: -.04em; }
 .entry-card > p { min-height: 64px; margin: 11px 0 18px; color: #8d9189; font-size: 11px; line-height: 1.75; }
 .entry-card > small { display: block; margin-top: auto; padding-top: 15px; color: #62665f; font-size: 8px; line-height: 1.6; }
-.channel-url-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 12px; }
-.channel-url-form label { grid-column: 1 / -1; }
 label { display: flex; flex-direction: column; gap: 7px; }
 label > span { color: #73776f; font: 700 8px var(--mono); letter-spacing: .13em; text-transform: uppercase; }
 input, select { width: 100%; min-height: 45px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 0; outline: 0; background: #090b0a; color: #f2f4ed; }
@@ -230,7 +228,7 @@ footer { display: flex; justify-content: space-between; align-items: center; min
 @media (max-width: 600px) {
   .site-header, footer { padding-inline: 15px; }.brand > span:last-child { display: none; }.header-actions { gap: 5px; }.quiet-button { padding: 8px; }
   .landing-main, .dashboard-main, .market-main { padding-inline: 15px; padding-bottom: 75px; }.diagnosis-hero { min-height: 480px; display: block; position: relative; padding-top: 85px; }.hero-copy-block h1, .market-hero h1 { font-size: 43px; position: relative; z-index: 2; }.hero-copy-block > p:not(.eyebrow) { width: 94%; font-size: 11px; }.hero-score-preview { position: absolute; right: -110px; bottom: -35px; }
-  .section-heading { align-items: start; }.section-heading h2, .block-heading h2 { font-size: 27px; }.text-button { white-space: nowrap; font-size: 8px; }.entry-card { padding: 23px; }.channel-url-form { display: flex; flex-direction: column; }
+  .section-heading { align-items: start; }.section-heading h2, .block-heading h2 { font-size: 27px; }.text-button { white-space: nowrap; font-size: 8px; }.entry-card { padding: 23px; }
   .channel-masthead { display: block; }.channel-identity > img { width: 58px; height: 58px; }.channel-identity h1 { font-size: 24px; }.source-line { flex-wrap: wrap; }.channel-kpis { display: grid; grid-template-columns: repeat(3,1fr); margin-top: 22px; }.channel-kpis > div { min-width: 0; padding: 8px; }.channel-kpis strong { font-size: 14px; }.csv-enrich { margin-top: 17px; }
   .section-tabs { gap: 0; overflow-x: auto; }.section-tabs button { min-width: 103px; }
   .overall-panel { display: block; padding: 10px 0 30px; }.overall-ring { margin-bottom: 27px; }.overall-copy h2 { font-size: 31px; }.score-grid { grid-template-columns: 1fr 1fr; }.score-card:nth-child(-n+4) { border-bottom: 0; }
@@ -245,4 +243,45 @@ footer { display: flex; justify-content: space-between; align-items: center; min
 }
 
 
-.sample-link { color: var(--acid); border-bottom: 1px solid rgba(223,255,0,.35); margin-left: 5px; }
+
+/* Personal owner-only entry */
+.personal-lock { justify-self: center; color: #777b74; font: 700 8px var(--mono); letter-spacing: .15em; }
+.personal-hero { min-height: 520px; }
+.personal-orbit .preview-score b { font: 700 48px/1 var(--mono); }
+.personal-login-section { padding: 62px 0; border-bottom: 1px solid var(--line); }
+.personal-login-card { display: grid; grid-template-columns: 120px minmax(0,1fr) 310px; gap: 38px; align-items: center; min-height: 260px; padding: 35px; border: 1px solid var(--line); background: linear-gradient(130deg, rgba(223,255,0,.07), #0d100d 48%); }
+.login-security-mark { width: 104px; height: 126px; display: grid; place-items: center; align-content: center; gap: 15px; border: 1px solid rgba(223,255,0,.32); background: #0a0c0a; color: var(--acid); text-align: center; font: 700 8px/1.55 var(--mono); letter-spacing: .12em; clip-path: polygon(50% 0, 96% 16%, 90% 75%, 50% 100%, 10% 75%, 4% 16%); }
+.login-security-mark span { width: 25px; height: 36px; position: relative; border: 2px solid var(--acid); border-radius: 3px; }
+.login-security-mark span::before { content: ''; position: absolute; width: 15px; height: 15px; left: 3px; top: -13px; border: 2px solid var(--acid); border-bottom: 0; border-radius: 10px 10px 0 0; }
+.login-copy h2 { margin: 0; font-size: clamp(27px, 3vw, 42px); letter-spacing: -.055em; }
+.login-copy > p:not(.eyebrow) { max-width: 680px; margin: 12px 0; color: #969a92; font-size: 11px; line-height: 1.75; }
+.login-copy ul { display: flex; flex-wrap: wrap; gap: 7px; margin: 17px 0 0; padding: 0; list-style: none; }
+.login-copy li { padding: 5px 7px; border: 1px solid #30342e; color: #858981; font-size: 8px; }
+.login-copy li::before { content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 7px; border-right: 1px solid var(--acid); border-bottom: 1px solid var(--acid); transform: rotate(45deg) translateY(-2px); }
+.login-action { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+.login-action .config-status { margin: 0; }
+.google-login-button { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; }
+.google-login-button b { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #f2f4ed; color: #3157c9; font: 800 14px Arial, sans-serif; }
+.login-action small { color: #6d7169; font-size: 8px; line-height: 1.6; }
+.personal-methods { margin-bottom: 10px; }
+.market-empty { border-top: 0; padding-block: 55px; text-align: center; }
+
+@media (max-width: 920px) {
+  .personal-login-card { grid-template-columns: 90px 1fr; }
+  .login-security-mark { width: 82px; height: 104px; }
+  .login-action { grid-column: 2; }
+}
+
+@media (max-width: 600px) {
+  .personal-lock { font-size: 7px; letter-spacing: .08em; }
+  .personal-hero { min-height: 470px; }
+  .personal-login-section { padding: 42px 0; }
+  .personal-login-card { display: block; padding: 25px 20px; }
+  .login-security-mark { width: 68px; height: 84px; margin-bottom: 24px; font-size: 6px; }
+  .login-security-mark span { width: 20px; height: 28px; }
+  .login-copy h2 { font-size: 28px; }
+  .login-copy ul { display: grid; }
+  .login-action { margin-top: 25px; }
+  .connection-dot { font-size: 0; }
+  .connection-dot span { font-size: 7px; }
+}

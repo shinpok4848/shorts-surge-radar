@@ -427,3 +427,53 @@ export async function fetchAudienceRetention(
     };
   });
 }
+
+
+function cleanSearchQuery(value: string): string {
+  return value.replace(/[#|<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+
+async function searchAuthenticatedVideos(
+  accessToken: string,
+  query: string,
+  region: string,
+  options: { publishedAfter?: string; maxResults?: number } = {},
+): Promise<ChannelVideo[]> {
+  const response = await dataRequest<ApiErrorPayload & { items?: Array<{ id?: { videoId?: string } }> }>('search', {
+    part: 'snippet',
+    type: 'video',
+    order: 'viewCount',
+    maxResults: String(options.maxResults ?? 20),
+    regionCode: region,
+    q: cleanSearchQuery(query) || 'shorts',
+    ...(options.publishedAfter ? { publishedAfter: options.publishedAfter } : {}),
+  }, accessToken);
+  const ids = (response.items ?? [])
+    .map((item) => item.id?.videoId)
+    .filter((videoId): videoId is string => Boolean(videoId));
+  return ownedVideoDetails(ids, accessToken);
+}
+
+export async function fetchOwnedChannelBenchmarks(
+  accessToken: string,
+  query: string,
+  ownChannelId: string,
+  region = 'KR',
+): Promise<ChannelVideo[]> {
+  const videos = await searchAuthenticatedVideos(accessToken, query, region, { maxResults: 25 });
+  return videos.filter((video) => video.channelId !== ownChannelId).slice(0, 12);
+}
+
+export async function fetchAuthenticatedMarketTrends(
+  accessToken: string,
+  query: string,
+  region: string,
+  hours: number,
+): Promise<ChannelVideo[]> {
+  const boundedHours = Math.min(720, Math.max(24, hours));
+  const publishedAfter = new Date(Date.now() - boundedHours * 3_600_000).toISOString();
+  return searchAuthenticatedVideos(accessToken, query || 'shorts', region, {
+    maxResults: 50,
+    publishedAfter,
+  });
+}

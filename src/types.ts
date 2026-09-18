@@ -3,8 +3,71 @@ export type DataBasis = 'measured' | 'public' | 'inferred' | 'unavailable';
 export type ContentKind = 'short' | 'video';
 export type ContentKindConfidence = 'verified' | 'candidate';
 export type DiagnosisPriority = 'critical' | 'high' | 'medium' | 'opportunity';
-export type AppView = 'diagnosis' | 'market' | 'produce';
+export type AppView = 'diagnosis' | 'market' | 'produce' | 'launch';
 export type DashboardSection = 'overview' | 'content' | 'doctor' | 'plan';
+
+export interface NicheBlueprint {
+  id: string;
+  label: string;
+  promise: string;
+  audience: string;
+  formats: string[];
+  hookAngles: string[];
+  keywords: string[];
+  postingCadence: string;
+  monetizationPath: string;
+}
+
+export interface HookTemplate {
+  category: string;
+  pattern: string;
+  example: string;
+  why: string;
+}
+
+export interface SeriesConcept {
+  name: string;
+  premise: string;
+  episodePattern: string;
+  visualRule: string;
+  sampleEpisodes: string[];
+}
+
+export interface CalendarEntry {
+  day: number;
+  dateLabel: string;
+  seriesName: string;
+  workingTitle: string;
+  hook: string;
+  focus: 'reach' | 'retention' | 'engagement' | 'conversion';
+  cta: string;
+}
+
+export interface RetentionCheck {
+  label: string;
+  target: string;
+  detail: string;
+}
+
+export interface LaunchKit {
+  niche: NicheBlueprint;
+  channelPromise: string;
+  visualIdentity: string[];
+  series: SeriesConcept[];
+  hooks: HookTemplate[];
+  calendar: CalendarEntry[];
+  retentionChecklist: RetentionCheck[];
+  weeklyReview: string[];
+  firstWeekActions: string[];
+  createdAt: string;
+}
+
+export interface LaunchInputs {
+  nicheId: string;
+  topic: string;
+  cadencePerWeek: 3 | 5 | 7;
+  startDateLocal: string;
+}
 export type RegionCode = 'KR' | 'US' | 'JP' | 'GB';
 export type PeriodHours = 24 | 168 | 720;
 
@@ -240,6 +303,8 @@ export interface AppState {
   productionDraft: ProductionDraft | null;
   publishDraft: PublishDraft | null;
   upload: UploadState;
+  launchInputs: LaunchInputs;
+  launchKit: LaunchKit | null;
 }
 
 // Market radar types retained for the authenticated secondary trend view.

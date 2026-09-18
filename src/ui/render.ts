@@ -1,12 +1,15 @@
 import type {
   AnalyzedVideo,
   AppState,
+  CalendarEntry,
   ChannelAnalysis,
   ChannelDataset,
   ContentKind,
   DashboardFilters,
   DashboardSection,
   Diagnosis,
+  LaunchInputs,
+  LaunchKit,
   MetricScore,
   ProductionDraft,
   PublishDraft,
@@ -35,7 +38,10 @@ export interface AppActions {
     rightsConfirmed: boolean;
   }) => void;
   onPublishVideo: (file: File | null, draft: PublishDraft, rightsConfirmed: boolean) => void;
+  onGenerateLaunchKit: (inputs: LaunchInputs) => void;
 }
+
+import { NICHE_BLUEPRINTS } from '../launch/niches';
 
 const compactNumber = new Intl.NumberFormat('ko-KR', { notation: 'compact', maximumFractionDigits: 1 });
 const wholeNumber = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
@@ -111,6 +117,7 @@ function renderHeader(state: AppState): string {
         <button class="${state.view === 'diagnosis' ? 'is-active' : ''}" data-view="diagnosis">채널 진단</button>
         <button class="${state.view === 'market' ? 'is-active' : ''}" data-view="market">시장 레이더</button>
         <button class="${state.view === 'produce' ? 'is-active' : ''}" data-view="produce">제작·예약</button>
+        <button class="${state.view === 'launch' ? 'is-active' : ''}" data-view="launch">채널 런치</button>
       </nav>` : '<span class="personal-lock">PRIVATE CREATOR DESK</span>'}
       <div class="header-actions">
         ${hasActiveChannel ? `<label class="channel-switch-label"><span>활성 채널</span><select id="channel-switcher">${state.connectedChannels.map((channel) => `<option value="${escapeHtml(channel.channelId)}" ${channel.channelId === state.activeChannelId ? 'selected' : ''}>${escapeHtml(channel.title)}</option>`).join('')}</select></label><button class="quiet-button" id="add-channel-button">＋ 계정 추가</button><button class="connection-dot" id="google-disconnect-button" title="현재 채널 연결 해제"><i></i><span>연결 해제</span></button>` : '<span class="header-caption">OWNER ACCOUNTS ONLY</span>'}
@@ -444,6 +451,67 @@ function renderProduce(state: AppState): string {
   return `<main class="production-main">${state.productionDraft ? renderProductionWorkbench(state, state.productionDraft) : renderPackSourceList(state)}</main>`;
 }
 
+function focusBadge(focus: CalendarEntry['focus']): string {
+  return { reach: '도달', retention: '유지', engagement: '반응', conversion: '전환' }[focus];
+}
+
+function renderLaunchForm(state: AppState): string {
+  const inputs = state.launchInputs;
+  return `<section class="launch-hero">
+    <div class="hero-copy-block">
+      <p class="eyebrow accent">SHORTS CHANNEL LAUNCH KIT</p>
+      <h1>새 숏츠 채널을<br/><em>설계부터 30일까지.</em></h1>
+      <p>니치와 주제를 고르면 채널 약속, 시각 규칙, 시리즈, 훅 라이브러리, 30일 발행 캘린더, 유지율 체크리스트를 한 번에 만듭니다. 20년차 숏츠 운영 원칙을 그대로 적용했습니다.</p>
+    </div>
+    <form id="launch-form" class="launch-form">
+      <label><span>채널 니치</span><select name="nicheId">${NICHE_BLUEPRINTS.map((niche) => `<option value="${niche.id}" ${inputs.nicheId === niche.id ? 'selected' : ''}>${escapeHtml(niche.label)}</option>`).join('')}</select></label>
+      <label><span>핵심 주제 · 키워드</span><input name="topic" value="${escapeHtml(inputs.topic)}" placeholder="예: 홈카페, 강아지 훈련, 엑셀" required /></label>
+      <label><span>주간 발행 횟수</span><select name="cadencePerWeek">${[3, 5, 7].map((count) => `<option value="${count}" ${inputs.cadencePerWeek === count ? 'selected' : ''}>주 ${count}회</option>`).join('')}</select></label>
+      <label><span>시작일</span><input name="startDateLocal" type="date" value="${escapeHtml(inputs.startDateLocal)}" /></label>
+      <button class="primary-button" type="submit">런치 킷 생성</button>
+    </form>
+    <div class="niche-preview">${NICHE_BLUEPRINTS.map((niche) => `<article class="${inputs.nicheId === niche.id ? 'is-active' : ''}"><h3>${escapeHtml(niche.label)}</h3><p>${escapeHtml(niche.promise)}</p><small>${escapeHtml(niche.postingCadence)}</small></article>`).join('')}</div>
+  </section>`;
+}
+
+function renderLaunchKit(kit: LaunchKit): string {
+  return `<section class="launch-result">
+    <header class="launch-result-head"><div><p class="eyebrow accent">LAUNCH BLUEPRINT / ${escapeHtml(kit.niche.label)}</p><h1>${escapeHtml(kit.channelPromise)}</h1><p>대상 시청자: ${escapeHtml(kit.niche.audience)} · 권장 수익화 경로: ${escapeHtml(kit.niche.monetizationPath)}</p></div><button class="quiet-button" id="launch-reset">다시 설계</button></header>
+
+    <div class="launch-grid">
+      <article class="launch-card"><p class="eyebrow">CHANNEL IDENTITY</p><h2>채널 시각 규칙</h2><ul>${kit.visualIdentity.map((rule) => `<li>${escapeHtml(rule)}</li>`).join('')}</ul></article>
+      <article class="launch-card"><p class="eyebrow">FIRST WEEK</p><h2>첫 주 실행</h2><ol>${kit.firstWeekActions.map((action) => `<li>${escapeHtml(action)}</li>`).join('')}</ol></article>
+    </div>
+
+    <div class="dashboard-block">
+      <div class="block-heading"><div><p class="eyebrow">SERIES SYSTEM</p><h2>반복 시리즈 설계</h2></div><span>단발 대신 시리즈로 구독 전환</span></div>
+      <div class="series-grid">${kit.series.map((series) => `<article><h3>${escapeHtml(series.name)}</h3><p>${escapeHtml(series.premise)}</p><div class="series-meta"><span>패턴</span><b>${escapeHtml(series.episodePattern)}</b></div><div class="series-meta"><span>시각 규칙</span><b>${escapeHtml(series.visualRule)}</b></div><ul>${series.sampleEpisodes.map((episode) => `<li>${escapeHtml(episode)}</li>`).join('')}</ul></article>`).join('')}</div>
+    </div>
+
+    <div class="dashboard-block">
+      <div class="block-heading"><div><p class="eyebrow">HOOK LIBRARY</p><h2>스크롤을 멈추는 훅</h2></div><span>첫 1~2초 설계</span></div>
+      <div class="hook-grid">${kit.hooks.map((hook) => `<article><span class="hook-cat">${escapeHtml(hook.category)}</span><p class="hook-example">${escapeHtml(hook.example)}</p><p class="hook-why">${escapeHtml(hook.why)}</p></article>`).join('')}</div>
+    </div>
+
+    <div class="dashboard-block">
+      <div class="block-heading"><div><p class="eyebrow">30-DAY CALENDAR</p><h2>발행 캘린더</h2></div><span>같은 시간대 일관 발행</span></div>
+      <div class="calendar-head"><span>#</span><span>날짜</span><span>시리즈 · 작업 제목</span><span>훅</span><span>목표</span></div>
+      <div class="calendar-rows">${kit.calendar.map((entry) => `<div class="calendar-row"><span class="cal-day">${String(entry.day).padStart(2, '0')}</span><span class="cal-date">${escapeHtml(entry.dateLabel)}</span><span class="cal-title"><b>${escapeHtml(entry.seriesName)}</b><small>${escapeHtml(entry.workingTitle)}</small></span><span class="cal-hook">${escapeHtml(entry.hook)}</span><span class="cal-focus focus--${entry.focus}">${focusBadge(entry.focus)}</span></div>`).join('')}</div>
+    </div>
+
+    <div class="launch-grid">
+      <article class="launch-card"><p class="eyebrow">RETENTION</p><h2>영상마다 지킬 체크리스트</h2><div class="retention-list">${kit.retentionChecklist.map((check) => `<div><b>${escapeHtml(check.label)}</b><span>${escapeHtml(check.target)}</span><p>${escapeHtml(check.detail)}</p></div>`).join('')}</div></article>
+      <article class="launch-card"><p class="eyebrow">WEEKLY REVIEW</p><h2>매주 회고 루프</h2><ol>${kit.weeklyReview.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ol></article>
+    </div>
+
+    <div class="launch-cta"><p>대본과 자막이 필요하면 <b>제작·예약</b> 탭에서 CapCut 작업팩을 만들고, 완성 영상을 예약 발행하세요.</p><button class="secondary-button" data-view="produce">제작·예약으로 이동</button></div>
+  </section>`;
+}
+
+function renderLaunch(state: AppState): string {
+  return `<main class="launch-main">${state.launchKit ? renderLaunchKit(state.launchKit) : renderLaunchForm(state)}</main>`;
+}
+
 function renderDashboard(state: AppState): string {
   const dataset = state.dataset;
   const analysis = state.analysis;
@@ -570,6 +638,18 @@ function bindActions(root: HTMLElement, actions: AppActions): void {
     if (label) label.textContent = uploadInput.files?.[0]?.name ?? 'MP4 / MOV / WebM 선택';
   });
 
+  root.querySelector('#launch-reset')?.addEventListener('click', () => actions.onNavigate('launch'));
+  root.querySelector<HTMLFormElement>('#launch-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget as HTMLFormElement);
+    const cadence = Number(data.get('cadencePerWeek'));
+    actions.onGenerateLaunchKit({
+      nicheId: String(data.get('nicheId') ?? ''),
+      topic: String(data.get('topic') ?? ''),
+      cadencePerWeek: (cadence === 3 || cadence === 5 || cadence === 7 ? cadence : 5),
+      startDateLocal: String(data.get('startDateLocal') ?? ''),
+    });
+  });
   root.querySelector<HTMLFormElement>('#youtube-upload-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget as HTMLFormElement);
@@ -595,7 +675,9 @@ export function renderApp(root: HTMLElement, state: AppState, actions: AppAction
       ? renderMarket(state)
       : state.view === 'produce'
         ? renderProduce(state)
-        : renderDashboard(state);
+        : state.view === 'launch'
+          ? renderLaunch(state)
+          : renderDashboard(state);
   root.innerHTML = `<div class="noise"></div>${renderHeader(state)}${content}${renderFeedback(state)}<footer><span>${escapeHtml(state.config.appLabel)} © ${new Date().getFullYear()}</span><p>개인 Google 채널 세션은 현재 탭의 메모리에만 보관됩니다.</p></footer>`;
   bindActions(root, actions);
 }

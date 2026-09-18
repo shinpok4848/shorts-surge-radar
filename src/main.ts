@@ -21,12 +21,14 @@ import {
   downloadCapCutPackage,
   updateProductionDraft,
 } from './export/capcut-package';
+import { generateLaunchKit } from './launch/launch-kit';
 import type {
   AppState,
   ChannelDataset,
   ChannelVideo,
   ConnectedChannel,
   DashboardFilters,
+  LaunchInputs,
   PublishDraft,
   ProductionDraft,
   RuntimeConfig,
@@ -75,6 +77,13 @@ let state: AppState = {
   productionDraft: null,
   publishDraft: null,
   upload: emptyUploadState(),
+  launchInputs: {
+    nicheId: 'how-to-fix',
+    topic: '',
+    cadencePerWeek: 5,
+    startDateLocal: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
+  },
+  launchKit: null,
 };
 
 function update(patch: Partial<AppState>): void {
@@ -451,6 +460,27 @@ async function publishVideo(file: File | null, draft: PublishDraft, rightsConfir
   }
 }
 
+function buildLaunchKit(inputs: LaunchInputs): void {
+  if (!inputs.topic.trim()) {
+    update({ launchInputs: inputs, error: '채널의 핵심 주제 또는 키워드를 입력해 주세요.' });
+    return;
+  }
+  const startDateLocal = inputs.startDateLocal || new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  const normalized: LaunchInputs = { ...inputs, startDateLocal };
+  try {
+    const launchKit = generateLaunchKit(normalized);
+    update({
+      launchInputs: normalized,
+      launchKit,
+      error: null,
+      notice: { tone: 'success', message: '숏츠 채널 런치 킷을 만들었습니다. 첫 주 실행 계획부터 시작하세요.' },
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (error) {
+    update({ launchInputs: normalized, error: errorMessage(error) });
+  }
+}
+
 function render(): void {
   renderApp(appRoot, state, {
     onNavigate: (view) => update({ view, error: null, notice: null }),
@@ -468,6 +498,7 @@ function render(): void {
     onCreateProduction: startProduction,
     onDownloadProduction: downloadProduction,
     onPublishVideo: (file, draft, rightsConfirmed) => void publishVideo(file, draft, rightsConfirmed),
+    onGenerateLaunchKit: buildLaunchKit,
   });
 }
 

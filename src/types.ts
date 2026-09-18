@@ -1,4 +1,4 @@
-export type DataSource = 'demo' | 'public-api' | 'google-oauth' | 'studio-csv';
+export type DataSource = 'google-oauth' | 'studio-csv';
 export type DataBasis = 'measured' | 'public' | 'inferred' | 'unavailable';
 export type ContentKind = 'short' | 'video';
 export type ContentKindConfidence = 'verified' | 'candidate';
@@ -9,8 +9,9 @@ export type RegionCode = 'KR' | 'US' | 'JP' | 'GB';
 export type PeriodHours = 24 | 168 | 720;
 
 export interface RuntimeConfig {
-  publicApiBaseUrl: string;
   googleOAuthClientId: string;
+  targetChannelHandle: string;
+  targetChannelId: string;
 }
 
 export interface ChannelProfile {
@@ -152,7 +153,7 @@ export interface WeeklyAction {
 
 export interface ChannelAnalysis {
   overallScore: number;
-  confidence: 'public' | 'owner' | 'studio' | 'demo';
+  confidence: 'owner' | 'studio';
   metricCoverage: number;
   scores: {
     reach: MetricScore;
@@ -193,7 +194,7 @@ export interface AppState {
   marketError: string | null;
 }
 
-// Market radar types retained for the secondary trend view and Worker contract.
+// Market radar types retained for the authenticated secondary trend view.
 export interface DashboardFilters {
   region: RegionCode;
   periodHours: PeriodHours;
@@ -219,7 +220,6 @@ export interface ShortsVideo {
   comments: number;
   tags: string[];
   hasCaptions: boolean;
-  isDemo?: boolean;
 }
 
 export interface RankedShort extends ShortsVideo {

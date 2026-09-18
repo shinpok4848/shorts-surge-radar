@@ -13,12 +13,10 @@ import type {
 
 export interface AppActions {
   onNavigate: (view: AppState['view']) => void;
-  onPublicAudit: (channelUrl: string) => void;
   onConnectGoogle: () => void;
   onDisconnectGoogle: () => void;
   onImportCsv: (files: File[]) => void;
-  onLoadDemo: () => void;
-  onReset: () => void;
+  onRefresh: () => void;
   onSelectSection: (section: DashboardSection) => void;
   onSelectVideo: (videoId: string) => void;
   onSetContentFilter: (filter: AppState['contentFilter']) => void;
@@ -73,12 +71,7 @@ function relativeDate(value: string): string {
 }
 
 function sourceLabel(dataset: ChannelDataset): string {
-  return {
-    demo: 'DEMO DATA',
-    'public-api': 'PUBLIC AUDIT',
-    'google-oauth': 'OWNER ANALYTICS',
-    'studio-csv': 'STUDIO CSV',
-  }[dataset.source];
+  return dataset.source === 'studio-csv' ? 'OWNER + STUDIO CSV' : 'OWNER ANALYTICS';
 }
 
 function basisLabel(basis: MetricScore['basis']): string {
@@ -97,17 +90,17 @@ function priorityLabel(priority: Diagnosis['priority']): string {
 function renderHeader(state: AppState): string {
   return `
     <header class="site-header">
-      <a class="brand" href="#" id="brand-home" aria-label="Channel Pulse 홈">
+      <a class="brand" href="#" id="brand-home" aria-label="낭만구조대 Channel Pulse 홈">
         <span class="brand-mark">ϟ</span>
-        <span><strong>CHANNEL</strong><b>PULSE</b></span>
+        <span><strong>ROMANCE</strong><b>PULSE</b></span>
       </a>
-      <nav class="top-nav" aria-label="주요 메뉴">
+      ${state.dataset && state.googleConnected ? `<nav class="top-nav" aria-label="주요 메뉴">
         <button class="${state.view === 'diagnosis' ? 'is-active' : ''}" data-view="diagnosis">내 채널 진단</button>
         <button class="${state.view === 'market' ? 'is-active' : ''}" data-view="market">시장 레이더</button>
-      </nav>
+      </nav>` : '<span class="personal-lock">PRIVATE / @낭만구조대</span>'}
       <div class="header-actions">
-        ${state.googleConnected ? '<button class="connection-dot" id="google-disconnect-button" title="Google 연결 해제"><i></i>Google 연결됨 <span>×</span></button>' : ''}
-        ${state.analysis ? '<button class="quiet-button" id="reset-button">새 진단</button>' : '<span class="header-caption">CREATOR INTELLIGENCE</span>'}
+        ${state.googleConnected ? '<button class="connection-dot" id="google-disconnect-button" title="Google 연결 해제"><i></i>인증됨 <span>로그아웃</span></button>' : '<span class="header-caption">OWNER ONLY</span>'}
+        ${state.analysis ? '<button class="quiet-button" id="refresh-button">데이터 갱신</button>' : ''}
       </div>
     </header>`;
 }
@@ -120,76 +113,47 @@ function renderFeedback(state: AppState): string {
   `;
 }
 
-function configStatus(configured: boolean, ready: string, pending: string): string {
-  return `<span class="config-status ${configured ? 'is-ready' : ''}"><i></i>${configured ? ready : pending}</span>`;
-}
-
 function renderLanding(state: AppState): string {
-  const publicReady = Boolean(state.config.publicApiBaseUrl);
   const oauthReady = Boolean(state.config.googleOAuthClientId);
+  const target = state.config.targetChannelHandle || '@낭만구조대';
   return `
-    <main class="landing-main">
-      <section class="diagnosis-hero">
+    <main class="landing-main personal-main">
+      <section class="diagnosis-hero personal-hero">
         <div class="hero-copy-block">
-          <p class="eyebrow accent">CHANNEL INTELLIGENCE / HYBRID AUDIT</p>
-          <h1>링크 하나에서<br/><em>다음 성장 행동</em>까지.</h1>
-          <p>모든 공개 업로드를 영상과 쇼츠 후보로 나누고, 실제 Analytics 또는 Studio CSV를 합쳐 무엇을 왜 바꿔야 하는지 우선순위로 설명합니다.</p>
-          <div class="trust-row"><span>측정값</span><span>공개값</span><span>추정값 구분</span><span>CSV는 브라우저에서만 처리</span></div>
+          <p class="eyebrow accent">PRIVATE CHANNEL INTELLIGENCE</p>
+          <h1>낭만구조대의<br/><em>성장 관제실.</em></h1>
+          <p>${escapeHtml(target)} 채널 소유자만 들어올 수 있습니다. Google 공식 인증 후 모든 업로드와 최근 Analytics를 자동으로 불러옵니다.</p>
+          <div class="trust-row"><span>비밀번호 미수집</span><span>읽기 전용 권한</span><span>대상 채널 일치 검증</span><span>토큰 메모리 보관</span></div>
         </div>
-        <div class="hero-score-preview" aria-hidden="true">
+        <div class="hero-score-preview personal-orbit" aria-hidden="true">
           <div class="preview-orbit orbit-a"></div><div class="preview-orbit orbit-b"></div>
-          <span class="preview-score">78<small>CHANNEL SCORE</small></span>
-          <span class="preview-chip chip-one">CTR +1.8%</span>
-          <span class="preview-chip chip-two">RETENTION</span>
+          <span class="preview-score"><b>ϟ</b><small>OWNER ACCESS</small></span>
+          <span class="preview-chip chip-one">READ ONLY</span>
+          <span class="preview-chip chip-two">PRIVATE</span>
         </div>
       </section>
 
-      <section class="entry-section">
-        <div class="section-heading">
-          <div><p class="eyebrow">START YOUR AUDIT</p><h2>원하는 깊이로 시작하세요</h2></div>
-          <button class="text-button" id="demo-button">샘플 진단 먼저 보기 <span>↗</span></button>
-        </div>
-        <div class="entry-grid">
-          <article class="entry-card entry-card--primary">
-            <div class="entry-number">01</div>
-            ${configStatus(publicReady, '공개 진단 준비됨', '서버 설정 필요')}
-            <span class="entry-icon">↗</span>
-            <h3>채널 링크 빠른 진단</h3>
-            <p>로그인 없이 공개 영상, 조회 속도, 반응률, 제목·태그 구조를 채널 평균과 비교합니다.</p>
-            <form id="channel-url-form" class="channel-url-form">
-              <label><span>YOUTUBE CHANNEL URL</span><input name="channelUrl" type="url" placeholder="https://youtube.com/@channel" required /></label>
-              <button class="primary-button" type="submit">공개 채널 분석</button>
-            </form>
-            <small>실제 노출·CTR·유지율은 공개되지 않으므로 추정하지 않습니다.</small>
-          </article>
-
-          <article class="entry-card">
-            <div class="entry-number">02</div>
-            ${configStatus(oauthReady, 'Google 연결 준비됨', 'OAuth 설정 필요')}
-            <span class="entry-icon google-icon">G</span>
-            <h3>내 채널 정밀 연결</h3>
-            <p>채널 소유자가 승인하면 최근 365일 시청 시간, 평균 조회율, 구독 전환, 유입 경로를 함께 진단합니다.</p>
-            <button class="secondary-button full-button" id="google-connect-button">Google로 내 채널 연결</button>
-            <small>읽기 전용 권한만 요청하며 토큰은 메모리에만 보관됩니다.</small>
-          </article>
-
-          <article class="entry-card drop-card" id="csv-drop-zone">
-            <div class="entry-number">03</div>
-            ${configStatus(true, '지금 사용 가능', '')}
-            <span class="entry-icon">⇧</span>
-            <h3>Studio CSV 가져오기</h3>
-            <p>노출수, CTR, 평균 조회율이 포함된 고급 모드 표 CSV를 로컬에서 분석합니다.</p>
-            <label class="drop-label" for="studio-csv-input"><strong>CSV를 놓거나 선택</strong><span>여러 표 CSV 동시 선택 가능 · ZIP은 압축 해제</span></label>
-            <input id="studio-csv-input" class="visually-hidden" type="file" accept=".csv,text/csv" multiple />
-            <small>파일 내용은 서버로 전송되지 않습니다. <a class="sample-link" href="./sample-studio.csv" download>샘플 CSV 받기</a></small>
-          </article>
-        </div>
+      <section class="personal-login-section">
+        <article class="personal-login-card">
+          <div class="login-security-mark"><span></span><b>OWNER<br/>VERIFIED</b></div>
+          <div class="login-copy">
+            <p class="eyebrow">SECURE ACCESS / ${escapeHtml(target)}</p>
+            <h2>Google로 본인 채널을 연결하세요</h2>
+            <p>채널 목록과 최근 365일의 조회·시청 시간·평균 조회율·구독 전환·유입 경로를 읽어 영상별 개선 순서를 만듭니다.</p>
+            <ul><li>낭만구조대가 아닌 채널은 자동 거부</li><li>Google 비밀번호와 Client Secret은 앱이 받지 않음</li><li>새로고침하거나 로그아웃하면 액세스 토큰 폐기</li></ul>
+          </div>
+          <div class="login-action">
+            <span class="config-status ${oauthReady ? 'is-ready' : ''}"><i></i>${oauthReady ? 'OAuth 준비됨' : 'OAuth Client ID 설정 필요'}</span>
+            <button class="primary-button google-login-button" id="google-connect-button" ${oauthReady ? '' : 'aria-describedby="oauth-setup-note"'}><b>G</b> 낭만구조대 채널로 로그인</button>
+            <small id="oauth-setup-note">${oauthReady ? 'Google 계정 선택 창에서 낭만구조대 채널 소유 계정을 선택하세요.' : '운영자 설정이 끝나면 이 버튼에서 Google 인증 창이 열립니다.'}</small>
+          </div>
+        </article>
       </section>
 
-      <section class="method-grid">
-        <div><span>01</span><strong>모든 콘텐츠 지도</strong><p>영상과 쇼츠 후보를 같은 기준이 아닌 포맷별 중앙값으로 비교합니다.</p></div>
-        <div><span>02</span><strong>원인 기반 진단</strong><p>노출·클릭·유지·반응·구독 중 어느 구간이 막혔는지 분리합니다.</p></div>
-        <div><span>03</span><strong>바로 쓰는 처방</strong><p>제목 3안, 썸네일 문구, 첫 훅, 영상 구성을 일주일 행동 계획으로 제공합니다.</p></div>
+      <section class="method-grid personal-methods">
+        <div><span>01</span><strong>자동 콘텐츠 분류</strong><p>내 모든 업로드를 일반 영상과 쇼츠 후보로 나눠 같은 포맷끼리 비교합니다.</p></div>
+        <div><span>02</span><strong>실제 성과 병목</strong><p>조회·시청 유지·반응·구독 전환 중 성장을 막는 구간을 우선순위로 찾습니다.</p></div>
+        <div><span>03</span><strong>바로 실행할 처방</strong><p>제목, 썸네일, 첫 훅, 영상 구성과 7일 실행 계획을 낭만구조대 데이터로 만듭니다.</p></div>
       </section>
     </main>`;
 }
@@ -247,7 +211,7 @@ function renderOverview(dataset: ChannelDataset, analysis: ChannelAnalysis): str
   return `
     <section class="overall-panel">
       <div class="overall-ring" style="--score:${analysis.overallScore}"><div><strong>${analysis.overallScore}</strong><span>CHANNEL<br/>SCORE</span></div></div>
-      <div class="overall-copy"><p class="eyebrow accent">DIAGNOSIS SUMMARY</p><h2>${analysis.overallScore >= 75 ? '성공 패턴을 확장할 단계입니다.' : analysis.overallScore >= 55 ? '성장 신호는 있습니다. 병목을 먼저 고치세요.' : '업로드 양보다 기초 구조 개선이 먼저입니다.'}</h2><p>공개 조회수만으로 노출을 단정하지 않고, 확보된 지표 안에서 클릭 포장·시청 유지·전환을 분리해 계산했습니다.</p></div>
+      <div class="overall-copy"><p class="eyebrow accent">DIAGNOSIS SUMMARY</p><h2>${analysis.overallScore >= 75 ? '성공 패턴을 확장할 단계입니다.' : analysis.overallScore >= 55 ? '성장 신호는 있습니다. 병목을 먼저 고치세요.' : '업로드 양보다 기초 구조 개선이 먼저입니다.'}</h2><p>낭만구조대의 소유자 Analytics 안에서 조회·시청 유지·반응·구독 전환을 분리해 계산했습니다. Studio CSV를 추가하면 노출·CTR 진단도 더 정밀해집니다.</p></div>
     </section>
     <section class="score-grid">
       ${scoreCard(analysis.scores.reach)}${scoreCard(analysis.scores.packaging)}${scoreCard(analysis.scores.retention)}
@@ -321,15 +285,15 @@ function metricTile(label: string, value: string, note: string): string {
   return `<div class="metric-tile"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`;
 }
 
-function videoLink(video: AnalyzedVideo, dataset: ChannelDataset): string {
-  if (dataset.source === 'demo' || video.videoId.startsWith('csv-')) return '';
+function videoLink(video: AnalyzedVideo): string {
+  if (video.videoId.startsWith('csv-')) return '';
   return `https://www.youtube.com/watch?v=${encodeURIComponent(video.videoId)}`;
 }
 
 function renderDoctor(state: AppState, dataset: ChannelDataset, analysis: ChannelAnalysis): string {
   const selected = analysis.videos.find((video) => video.videoId === state.selectedVideoId) ?? analysis.videos[0];
   if (!selected) return '<section class="empty-state"><h2>진단할 영상이 없습니다.</h2></section>';
-  const link = videoLink(selected, dataset);
+  const link = videoLink(selected);
   const benchmarkAverage = dataset.benchmarks.length
     ? dataset.benchmarks.reduce((sum, video) => sum + (video.metrics.views ?? 0), 0) / dataset.benchmarks.length
     : null;
@@ -372,8 +336,8 @@ function renderDoctor(state: AppState, dataset: ChannelDataset, analysis: Channe
       </section>
 
       <section class="dashboard-block benchmark-block">
-        <div class="block-heading"><div><p class="eyebrow">RELATED WINNERS</p><h2>연관 인기 영상 비교</h2></div>${dataset.source !== 'demo' ? `<button class="text-button" data-load-benchmarks="${escapeHtml(selected.videoId)}">현재 주제로 비교 불러오기 ↻</button>` : '<span>SAMPLE BENCHMARK</span>'}</div>
-        ${dataset.benchmarks.length ? `<div class="benchmark-grid">${dataset.benchmarks.slice(0, 6).map((video, index) => `<article><span>${String(index + 1).padStart(2, '0')}</span><img src="${safeUrl(video.thumbnailUrl)}" alt=""/><div><small>${escapeHtml(video.channelTitle ?? '연관 채널')}</small><h3>${escapeHtml(video.title)}</h3><p>조회 ${formatNumber(video.metrics.views)} · ${video.contentKind === 'short' ? '쇼츠 후보' : '일반 영상'}</p></div></article>`).join('')}</div><p class="benchmark-note">비교 영상 평균 조회 ${formatNumber(benchmarkAverage)}. 조회수 차이만 따라가지 말고 제목의 약속, 도입 증거, 영상 길이의 차이를 새 사례에 적용하세요.</p>` : '<div class="unavailable-panel"><strong>비교 데이터가 아직 없습니다</strong><p>진단 서버가 연결되면 선택한 영상의 핵심 주제로 관련 인기 영상을 불러옵니다.</p></div>'}
+        <div class="block-heading"><div><p class="eyebrow">RELATED WINNERS</p><h2>연관 인기 영상 비교</h2></div><button class="text-button" data-load-benchmarks="${escapeHtml(selected.videoId)}">현재 주제로 비교 불러오기 ↻</button></div>
+        ${dataset.benchmarks.length ? `<div class="benchmark-grid">${dataset.benchmarks.slice(0, 6).map((video, index) => `<article><span>${String(index + 1).padStart(2, '0')}</span><img src="${safeUrl(video.thumbnailUrl)}" alt=""/><div><small>${escapeHtml(video.channelTitle ?? '연관 채널')}</small><h3>${escapeHtml(video.title)}</h3><p>조회 ${formatNumber(video.metrics.views)} · ${video.contentKind === 'short' ? '쇼츠 후보' : '일반 영상'}</p></div></article>`).join('')}</div><p class="benchmark-note">비교 영상 평균 조회 ${formatNumber(benchmarkAverage)}. 조회수 차이만 따라가지 말고 제목의 약속, 도입 증거, 영상 길이의 차이를 새 사례에 적용하세요.</p>` : '<div class="unavailable-panel"><strong>아직 비교 영상을 불러오지 않았습니다</strong><p>위 버튼을 누르면 현재 Google 인증으로 같은 주제의 인기 영상을 검색합니다.</p></div>'}
       </section>
     </div>
   </section>`;
@@ -407,12 +371,12 @@ function renderDashboard(state: AppState): string {
 }
 
 function marketCard(video: RankedShort): string {
-  const link = video.isDemo ? '' : `https://www.youtube.com/shorts/${encodeURIComponent(video.videoId)}`;
+  const link = `https://www.youtube.com/watch?v=${encodeURIComponent(video.videoId)}`;
   return `<article class="market-card">
     <span class="market-rank">${String(video.rank).padStart(2, '0')}</span>
     <img src="${safeUrl(video.thumbnailUrl)}" alt="${escapeHtml(video.title)} 썸네일"/>
-    <div><p><span class="pulse-dot"></span>${video.dataQuality === 'observed' ? '실측 증가' : '게시 후 평균'} <b>${formatNumber(video.velocity)}/h</b></p><h3>${escapeHtml(video.title)}</h3><small>${escapeHtml(video.channelTitle)} · ${relativeDate(video.publishedAt)}</small><div class="market-metrics"><span>조회 <b>${formatNumber(video.views)}</b></span><span>반응 <b>${(video.engagementRate * 100).toFixed(1)}%</b></span><span>점수 <b>${video.score}</b></span></div></div>
-    ${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer">원본 ↗</a>` : '<em>DEMO</em>'}
+    <div><p><span class="pulse-dot"></span>게시 후 평균 <b>${formatNumber(video.velocity)}/h</b></p><h3>${escapeHtml(video.title)}</h3><small>${escapeHtml(video.channelTitle)} · ${relativeDate(video.publishedAt)}</small><div class="market-metrics"><span>조회 <b>${formatNumber(video.views)}</b></span><span>반응 <b>${(video.engagementRate * 100).toFixed(1)}%</b></span><span>점수 <b>${video.score}</b></span></div></div>
+    <a href="${link}" target="_blank" rel="noopener noreferrer">원본 ↗</a>
   </article>`;
 }
 
@@ -426,7 +390,7 @@ function renderMarket(state: AppState): string {
       <button class="primary-button" type="submit" ${state.marketLoading ? 'disabled' : ''}>시장 스캔</button>
     </form>
     ${state.marketError ? `<div class="notice notice--warning">${escapeHtml(state.marketError)}</div>` : ''}
-    <section class="market-list"><div class="block-heading"><div><p class="eyebrow">SURGE RANKING</p><h2>지금 가속 중인 영상</h2></div><span>${state.config.publicApiBaseUrl ? 'LIVE PUBLIC DATA' : 'DEMO SIGNALS'}</span></div>${state.marketVideos.map(marketCard).join('')}</section>
+    <section class="market-list"><div class="block-heading"><div><p class="eyebrow">SURGE RANKING</p><h2>지금 가속 중인 영상</h2></div><span>OWNER OAUTH DATA</span></div>${state.marketVideos.length ? state.marketVideos.map(marketCard).join('') : '<div class="unavailable-panel market-empty"><strong>주제를 입력해 시장 스캔을 시작하세요</strong><p>낭만구조대와 같은 시청자 관심사를 가진 최근 인기 영상을 Google 인증으로 검색합니다. 검색은 YouTube API 할당량을 사용합니다.</p></div>'}</section>
   </main>`;
 }
 
@@ -445,27 +409,10 @@ function bindActions(root: HTMLElement, actions: AppActions): void {
   root.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((button) => button.addEventListener('click', () => {
     actions.onNavigate(button.dataset.view as AppState['view']);
   }));
-  root.querySelector('#reset-button')?.addEventListener('click', actions.onReset);
+  root.querySelector('#refresh-button')?.addEventListener('click', actions.onRefresh);
   root.querySelector('#google-disconnect-button')?.addEventListener('click', actions.onDisconnectGoogle);
-  root.querySelector('#demo-button')?.addEventListener('click', actions.onLoadDemo);
   root.querySelector('#google-connect-button')?.addEventListener('click', actions.onConnectGoogle);
-  root.querySelector<HTMLFormElement>('#channel-url-form')?.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget as HTMLFormElement);
-    actions.onPublicAudit(String(data.get('channelUrl') ?? ''));
-  });
-  bindFileInput(root, '#studio-csv-input', actions);
   bindFileInput(root, '#dashboard-csv-input', actions);
-
-  const dropZone = root.querySelector<HTMLElement>('#csv-drop-zone');
-  dropZone?.addEventListener('dragover', (event) => { event.preventDefault(); dropZone.classList.add('is-dragging'); });
-  dropZone?.addEventListener('dragleave', () => dropZone.classList.remove('is-dragging'));
-  dropZone?.addEventListener('drop', (event) => {
-    event.preventDefault();
-    dropZone.classList.remove('is-dragging');
-    const files = [...(event.dataTransfer?.files ?? [])];
-    if (files.length) actions.onImportCsv(files);
-  });
 
   root.querySelectorAll<HTMLButtonElement>('[data-section]').forEach((button) => button.addEventListener('click', () => {
     actions.onSelectSection(button.dataset.section as DashboardSection);
@@ -497,6 +444,11 @@ function bindActions(root: HTMLElement, actions: AppActions): void {
 }
 
 export function renderApp(root: HTMLElement, state: AppState, actions: AppActions): void {
-  root.innerHTML = `<div class="noise"></div>${renderHeader(state)}${state.view === 'market' ? renderMarket(state) : renderDashboard(state)}${renderFeedback(state)}<footer><span>CHANNEL PULSE © ${new Date().getFullYear()}</span><p>측정값과 추정값을 구분합니다. 트렌드는 참고하고 창작은 새롭게.</p></footer>`;
+  const content = !state.dataset || !state.googleConnected
+    ? renderLanding(state)
+    : state.view === 'market'
+      ? renderMarket(state)
+      : renderDashboard(state);
+  root.innerHTML = `<div class="noise"></div>${renderHeader(state)}${content}${renderFeedback(state)}<footer><span>ROMANCE PULSE © ${new Date().getFullYear()}</span><p>낭만구조대 채널 소유자 전용 · Google 비밀번호를 수집하지 않습니다.</p></footer>`;
   bindActions(root, actions);
 }

@@ -1,127 +1,104 @@
-# CHANNEL PULSE 운영 가이드
+# ROMANCE PULSE 운영 가이드
 
-## 현재 운영 준비 상태
+## 절대 공유하지 않을 정보
 
-- GitHub Pages 프런트엔드: 배포 가능
-- 데모 및 Studio CSV: 별도 자격 증명 없이 동작
-- 공개 채널 진단 Worker: 코드 완료, Cloudflare 배포 및 `YOUTUBE_API_KEY` secret 필요
-- Google 소유자 진단: 코드 완료, Google OAuth Web Client ID 필요
+- Google 계정 비밀번호
+- 2단계 인증 코드
+- OAuth Client Secret
+- 액세스 토큰 또는 갱신 토큰
+- API 키
 
-## 배포 체크리스트
+이 앱은 위 값을 요구하지 않습니다. 필요한 것은 공개 식별자인 **OAuth Web Client ID** 하나뿐입니다.
 
-### 1. Google Cloud
+## 최초 설정 체크리스트
 
-1. 프로젝트 생성
-2. YouTube Data API v3 활성화
-3. YouTube Analytics API 활성화
-4. YouTube Data API로 제한한 API 키 생성
-5. OAuth 동의 화면 구성
-6. Web OAuth Client ID 생성
-7. 승인된 JavaScript 원본 등록
-   - `https://shinpok4848.github.io`
-   - `http://localhost:4173`(로컬 개발용)
+### Google Cloud API
 
-API 키는 Worker secret에만 저장합니다. OAuth Client ID는 공개 식별자이므로 프런트 설정에 둘 수 있지만 Client Secret은 절대 저장소에 넣지 않습니다.
+- [ ] YouTube Data API v3 활성화
+- [ ] YouTube Analytics API 활성화
 
-### 2. Worker
+### OAuth 동의 화면
 
-```bash
-cd worker
-wrangler secret put YOUTUBE_API_KEY
-wrangler deploy
-```
+- [ ] Audience: External
+- [ ] Publishing status: Testing
+- [ ] Test users: 낭만구조대 소유 Google 이메일 1명만 등록
+- [ ] Scope: `youtube.readonly`
+- [ ] Scope: `yt-analytics.readonly`
 
-배포 후 확인:
+### OAuth Web Client
 
-```text
-GET https://<worker-url>/health
-```
+- [ ] Application type: Web application
+- [ ] Authorized JavaScript origin: `https://shinpok4848.github.io`
+- [ ] 로컬 확인 시 origin: `http://localhost:4173`
+- [ ] Client ID만 `public/app-config.json`에 입력
+- [ ] Client Secret은 어디에도 입력하지 않음
 
-정상 응답 예시:
+## 설정 파일
 
 ```json
-{"ok":true,"configured":true}
+{
+  "googleOAuthClientId": "<client-id>.apps.googleusercontent.com",
+  "targetChannelHandle": "@낭만구조대",
+  "targetChannelId": ""
+}
 ```
 
-허용 원본과 최대 수집 영상 수는 `worker/wrangler.toml`에서 관리합니다.
+최초 연결 후 실제 채널 ID를 확인할 수 있으면 `targetChannelId`에 `UC...` 값을 넣고 다시 배포하는 것을 권장합니다.
 
-### 3. 프런트 설정
-
-`public/app-config.json`에 Worker URL과 OAuth Client ID를 입력합니다.
+## 배포
 
 ```bash
 bun run typecheck
 bun run build
-```
-
-생성된 `docs/`를 커밋하면 GitHub Pages가 자동 재배포합니다.
-
-## 데이터 흐름
-
-| 기능 | 데이터 출처 | 자격 증명 | 캐시/보관 |
-|---|---|---|---|
-| 공개 채널 진단 | YouTube Data API | Worker API key secret | CDN 15분 |
-| 연관 인기 영상 | YouTube Data API search | Worker API key secret | CDN 15분 |
-| 시장 레이더 | YouTube Data API search | Worker API key secret | CDN 15분 |
-| 내 채널 진단 | Data + Analytics API | 사용자 OAuth access token | 메모리만 사용 |
-| Studio CSV | 사용자 로컬 파일 | 없음 | 브라우저 메모리만 사용 |
-
-## API 할당량 관리
-
-- 채널 업로드 수집은 저비용 `playlistItems.list`와 `videos.list` 배치를 사용합니다.
-- 비용이 큰 검색 호출은 연관영상 버튼을 눌렀을 때와 시장 스캔 시에만 실행합니다.
-- 공개 응답은 15분 캐시해 같은 요청의 반복 비용을 줄입니다.
-- `MAX_UPLOADS` 기본값은 1,000, 최대값은 2,000입니다.
-- Google Cloud에서 일일 할당량과 오류율 알림을 설정하세요.
-
-## 진단 점수 해석
-
-- **확산력:** 같은 포맷 내 활성일 기준 조회 속도 비교
-- **클릭 포장:** CTR이 있으면 측정값, 없으면 제목 구조만 낮은 신뢰도의 추정값
-- **시청 유지:** 평균 조회율 또는 평균 시청 지속 시간/영상 길이
-- **반응:** 좋아요 + 댓글 가중치 + 공유 가중치를 조회수로 정규화
-- **구독 전환:** 조회 1천회당 순구독자
-- **일관성:** 최근 게시 간격의 변동성
-
-누락 지표는 0점 처리하지 않고 가중치에서 제외합니다. 공개 진단과 소유자/CSV 정밀 진단 점수를 직접 동일한 신뢰도로 비교하면 안 됩니다.
-
-## 개인정보와 보안
-
-- OAuth 토큰은 로컬 스토리지에 저장하지 않습니다.
-- CSV 파일은 네트워크로 전송하지 않습니다.
-- Worker는 허용 원본 이외의 브라우저 요청을 거부합니다.
-- API 오류 응답에 Google API 키나 원문 요청 정보를 노출하지 않습니다.
-- 저장소와 `docs/`에서 실제 키 패턴이 없는지 배포 전 확인합니다.
-
-## 장애 대응
-
-| 증상/코드 | 확인 사항 |
-|---|---|
-| `PUBLIC_API_NOT_CONFIGURED` | `publicApiBaseUrl` 설정 및 재빌드 |
-| `GOOGLE_OAUTH_NOT_CONFIGURED` | `googleOAuthClientId` 설정 및 재빌드 |
-| `ORIGIN_NOT_ALLOWED` | Worker `ALLOWED_ORIGINS`에 Pages 원본 추가 |
-| `YOUTUBE_QUOTA_EXCEEDED` | Google Cloud 할당량, 캐시, 검색 호출 빈도 확인 |
-| `API_NOT_ENABLED` | Data API와 Analytics API 활성화 확인 |
-| `INSUFFICIENT_PERMISSIONS` | 두 읽기 전용 OAuth 범위와 사용자 승인 확인 |
-| Google 팝업 차단 | 승인된 JavaScript 원본, 브라우저 팝업 정책 확인 |
-| CSV 열 인식 실패 | 고급 모드 표 CSV인지, ZIP을 풀었는지 확인 |
-| 쇼츠 오분류 | Studio CSV의 콘텐츠 유형 열을 포함해 가져오기 |
-
-## 릴리스 검증
-
-```bash
-bun run typecheck
-bun run build
-bun run build:worker
 git diff --check
 ```
 
-브라우저에서 확인할 최소 흐름:
+`docs/`를 기본 브랜치에 반영하면 현재 GitHub Pages 설정이 자동 배포합니다.
 
-1. 랜딩 → 샘플 진단
-2. 진단 요약 → 콘텐츠 지도 → 포맷 필터
-3. 영상 선택 → 영상 닥터 → 제작 가이드
-4. 7일 실행 계획 7개 표시
-5. 샘플 CSV 가져오기
-6. 390px 모바일 가로 넘침 없음
-7. 운영 설정 후 실제 채널 URL과 Google OAuth 각각 확인
+## 사용 세션
+
+- 로그인 버튼 클릭 전에는 API 호출이 없습니다.
+- Google 팝업에서 본인 계정 또는 연결된 브랜드 채널을 선택합니다.
+- 채널이 `@낭만구조대`와 다르면 토큰을 폐기합니다.
+- 토큰은 메모리에만 있고 약 1시간 후 만료될 수 있습니다.
+- 페이지 새로고침 또는 로그아웃 후 다시 인증해야 합니다.
+- Studio CSV는 로그인된 낭만구조대 데이터에만 병합합니다.
+
+## API 할당량
+
+- 업로드 수집은 저비용 uploads playlist와 `videos.list` 배치를 사용합니다.
+- 비용이 큰 `search.list`는 사용자가 연관영상 또는 시장 스캔을 요청할 때만 실행합니다.
+- 같은 검색을 반복하면 Google Cloud 프로젝트 할당량을 소비합니다.
+- 앱은 기본적으로 최대 2,000개 업로드를 불러옵니다.
+
+## 장애 대응
+
+| 증상 | 확인 사항 |
+|---|---|
+| OAuth Client ID 설정 필요 | `public/app-config.json` 입력 후 `bun run build` 및 재배포 |
+| `origin_mismatch` | Authorized JavaScript origins에 `https://shinpok4848.github.io` 추가 |
+| 앱이 테스트 액세스를 거부 | OAuth Test users에 본인 Google 이메일 추가 |
+| API가 활성화되지 않음 | Data API와 Analytics API 모두 활성화 |
+| 낭만구조대가 아니라는 오류 | Google/브랜드 계정 선택을 변경; 필요하면 YouTube에서 채널 전환 후 재로그인 |
+| Analytics 데이터가 적음 | 최근 2~3일 처리 지연과 365일 분석 범위 확인 |
+| CTR이 없음 | YouTube Studio 고급 모드 CSV에서 노출·CTR 열을 포함해 가져오기 |
+| 시장 검색 할당량 초과 | 검색 횟수를 줄이고 다음 할당량 갱신까지 대기 |
+| 팝업 차단 | 브라우저에서 사이트의 팝업 허용 |
+
+## 계정 보안 사고 시
+
+1. Google 계정 보안 페이지에서 앱 접근 권한을 철회합니다.
+2. Google Cloud에서 OAuth Client를 비활성화하거나 삭제합니다.
+3. 필요하면 새 Client ID를 생성해 설정을 교체합니다.
+4. 비밀번호를 이 앱이나 저장소에 넣었다면 즉시 비밀번호를 변경합니다.
+
+## 릴리스 검증
+
+1. Client ID가 없는 빌드에서 로그인 버튼이 안전한 설정 안내를 표시하는지 확인
+2. 허용된 Test user로 Google 팝업이 열리는지 확인
+3. 다른 채널 선택 시 대시보드가 열리지 않는지 확인
+4. 낭만구조대 선택 시 모든 업로드와 Analytics가 표시되는지 확인
+5. 콘텐츠 지도, 영상 닥터, 연관영상, 시장 레이더 확인
+6. 로그아웃 후 데이터가 화면에서 사라지는지 확인
+7. 390px 모바일에서 가로 넘침이 없는지 확인
+8. 저장소와 `docs/`에 비밀번호, Client Secret, 토큰, API 키가 없는지 검색

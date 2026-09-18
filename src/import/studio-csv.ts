@@ -237,7 +237,7 @@ function validIsoDate(raw: string): string | null {
 
 export async function importStudioCsvFiles(
   files: File[],
-  existing: ChannelDataset | null = null,
+  existing: ChannelDataset,
 ): Promise<ChannelDataset> {
   const csvFiles = files.filter((file) => file.name.toLocaleLowerCase().endsWith('.csv') || file.type.includes('csv'));
   if (!csvFiles.length) throw new StudioCsvError('CSV 파일을 선택해 주세요. ZIP 파일은 먼저 압축을 풀어야 합니다.', 'CSV_REQUIRED');
@@ -271,8 +271,8 @@ export async function importStudioCsvFiles(
     deduped.set(key, previous ? mergeVideo(previous, video) : video);
   }
 
-  const existingById = new Map(existing?.videos.map((video) => [video.videoId, video]) ?? []);
-  const existingByTitle = new Map(existing?.videos.map((video) => [normalizedTitle(video.title), video]) ?? []);
+  const existingById = new Map(existing.videos.map((video) => [video.videoId, video]));
+  const existingByTitle = new Map(existing.videos.map((video) => [normalizedTitle(video.title), video]));
   const mergedIds = new Set<string>();
   const mergedImports = [...deduped.values()].map((video) => {
     const base = existingById.get(video.videoId) ?? existingByTitle.get(normalizedTitle(video.title));
@@ -280,12 +280,12 @@ export async function importStudioCsvFiles(
     mergedIds.add(base.videoId);
     return mergeVideo(base, video);
   });
-  const untouched = existing?.videos.filter((video) => !mergedIds.has(video.videoId)) ?? [];
+  const untouched = existing.videos.filter((video) => !mergedIds.has(video.videoId));
 
   const validDates = dates.map(validIsoDate).filter((date): date is string => Boolean(date)).sort();
   const dateRange = validDates.length
     ? { startDate: validDates[0], endDate: validDates.at(-1) ?? validDates[0] }
-    : existing?.dateRange;
+    : existing.dateRange;
   const hasCtr = Boolean(fieldHeader('ctr', [...recognizedHeaders]));
   const hasRetention = Boolean(
     fieldHeader('averagePercentageViewed', [...recognizedHeaders])
@@ -296,24 +296,15 @@ export async function importStudioCsvFiles(
     source: 'studio-csv',
     fetchedAt: new Date().toISOString(),
     dateRange,
-    channel: existing?.channel ?? {
-      channelId: 'studio-csv',
-      title: 'YouTube Studio 채널',
-      description: '브라우저에서 로컬 분석한 YouTube Studio CSV 데이터',
-      avatarUrl: svgThumbnail('MY CHANNEL', 0),
-      subscribers: null,
-      totalViews: null,
-      videoCount: deduped.size,
-    },
+    channel: existing.channel,
     videos: [...mergedImports, ...untouched],
-    trafficSources: existing?.trafficSources ?? [],
-    benchmarks: existing?.benchmarks ?? [],
-    truncated: existing?.truncated ?? false,
+    trafficSources: existing.trafficSources,
+    benchmarks: existing.benchmarks,
+    truncated: existing.truncated,
     warnings: [
       `CSV ${csvFiles.length}개에서 영상 ${deduped.size.toLocaleString('ko-KR')}개를 로컬로 분석했습니다. 파일은 서버에 업로드되지 않았습니다.`,
       ...(!hasCtr ? ['노출 클릭률 열이 없습니다. YouTube Studio 고급 모드에서 노출수·CTR 열을 포함해 내보내면 포장 진단이 정밀해집니다.'] : []),
       ...(!hasRetention ? ['평균 조회율 또는 평균 시청 지속 시간 열이 없어 유지율 진단은 제한됩니다.'] : []),
-      ...(!existing ? ['CSV만 사용하면 썸네일·설명·태그·정확한 게시일이 없을 수 있습니다. Google 연결 또는 URL 진단 후 CSV를 추가하면 합쳐집니다.'] : []),
     ],
   };
 }

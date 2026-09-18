@@ -95,9 +95,8 @@ function netSubscribers(video: ChannelVideo): number | null {
   return (gained ?? 0) - (lost ?? 0);
 }
 
-function metricBasis(dataset: ChannelDataset, privateMetric = false): DataBasis {
-  if (privateMetric) return dataset.source === 'public-api' ? 'unavailable' : 'measured';
-  return dataset.source === 'public-api' ? 'public' : 'measured';
+function metricBasis(_dataset: ChannelDataset, _privateMetric = false): DataBasis {
+  return 'measured';
 }
 
 function scoreVideo(
@@ -505,7 +504,7 @@ export function analyzeChannel(dataset: ChannelDataset): ChannelAnalysis {
 
   return {
     overallScore,
-    confidence: dataset.source === 'public-api' ? 'public' : dataset.source === 'studio-csv' ? 'studio' : dataset.source === 'demo' ? 'demo' : 'owner',
+    confidence: dataset.source === 'studio-csv' ? 'studio' : 'owner',
     metricCoverage,
     scores,
     formats,

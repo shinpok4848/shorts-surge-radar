@@ -32,19 +32,22 @@ const fontCss = (await readFile(resolve(root, 'public/fonts/noto-sans-kr/css.css
   .replaceAll('url(', 'url(./fonts/noto-sans-kr/');
 const css = `${fontCss}\n${bundledCss}`;
 const script = (await jsOutput.text()).replaceAll('</script>', '<\\/script>');
+const runtimeConfig = JSON.parse(await readFile(resolve(root, 'public/app-config.json'), 'utf8')) as Record<string, unknown>;
+const serializedConfig = JSON.stringify(runtimeConfig).replaceAll('<', '\\u003c');
 const html = `<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="YouTube Shorts 조회수 급상승을 5분 단위로 추적하는 크리에이터용 레이더" />
-    <meta name="theme-color" content="#090a0a" />
+    <meta name="description" content="채널 URL, YouTube Analytics, Studio CSV를 결합해 영상별 병목과 다음 성장 행동을 진단합니다." />
+    <meta name="theme-color" content="#090b0a" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <style>${css}</style>
-    <title>SHORTS PULSE — 쇼츠 급상승 레이더</title>
+    <title>CHANNEL PULSE — 유튜브 채널 성장 진단</title>
   </head>
   <body>
     <div id="app"></div>
+    <script>window.__CHANNEL_PULSE_CONFIG__=${serializedConfig};</script>
     <script type="module">${script}</script>
   </body>
 </html>
@@ -52,6 +55,7 @@ const html = `<!doctype html>
 
 await Bun.write(resolve(outputDirectory, 'index.html'), html);
 await Bun.write(resolve(outputDirectory, 'favicon.svg'), Bun.file(resolve(root, 'public/favicon.svg')));
+await Bun.write(resolve(outputDirectory, 'sample-studio.csv'), Bun.file(resolve(root, 'public/sample-studio.csv')));
 await cp(resolve(root, 'public/fonts'), resolve(outputDirectory, 'fonts'), { recursive: true });
 await Bun.write(resolve(outputDirectory, '.nojekyll'), '');
 

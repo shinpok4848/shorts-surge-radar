@@ -1,0 +1,10 @@
+name = "channel-pulse-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://shinpok4848.github.io,http://localhost:4173,http://127.0.0.1:4173"
+MAX_UPLOADS = "1000"
+
+# Add the API key as a secret; never place it in this file:
+# wrangler secret put YOUTUBE_API_KEY

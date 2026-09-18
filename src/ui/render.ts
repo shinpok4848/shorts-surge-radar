@@ -375,11 +375,23 @@ function renderPackSourceList(state: AppState): string {
   const candidates = (state.analysis?.videos ?? [])
     .filter((video) => video.durationSeconds !== null && video.durationSeconds <= 60)
     .slice(0, 12);
+  const trendCandidates = state.marketVideos
+    .filter((video) => video.durationSeconds > 0 && video.durationSeconds <= 60)
+    .slice(0, 12);
+  const regionLabel = state.marketFilters.region === 'KR' ? '대한민국' : state.marketFilters.region;
   return `<section class="production-empty">
-    <div class="production-intro"><p class="eyebrow accent">CAPCUT PRODUCTION PACK</p><h1>분석에서<br/><em>편집 시작 파일</em>까지.</h1><p>내 60초 이하 영상 또는 시장 레이더의 인기 쇼츠를 선택하면, 복제 대본이 아닌 새 원본 초안을 CapCut용 SRT·TXT·샷리스트와 함께 만듭니다.</p></div>
+    <div class="production-intro"><p class="eyebrow accent">CAPCUT PRODUCTION PACK</p><h1>트렌드에서<br/><em>편집 시작 파일</em>까지.</h1><p>지금 뜨는 트렌드 영상 또는 내 60초 이하 영상을 선택하면, 복제 대본이 아닌 새 원본 초안을 CapCut용 SRT·TXT·샷리스트와 함께 만듭니다.</p></div>
+
+    <div class="production-source-list production-trend-source">
+      <div class="block-heading"><div><p class="eyebrow accent">TRENDING NOW / ${escapeHtml(regionLabel)}</p><h2>지금 뜨는 트렌드에서 시작</h2></div><span>${trendCandidates.length ? `${trendCandidates.length}개 · 60초 이하` : '시장 레이더 미실행'}</span></div>
+      ${trendCandidates.length
+        ? trendCandidates.map((video) => `<article><img src="${safeUrl(video.thumbnailUrl)}" alt=""/><div><small>🔥 게시 후 ${formatNumber(video.velocity)}/h · ${formatNumber(video.views)} 조회</small><h3>${escapeHtml(video.title)}</h3><em>${escapeHtml(video.channelTitle)}</em></div><button class="primary-button" data-create-production="market" data-production-id="${escapeHtml(video.videoId)}">이 트렌드로 원본 제작</button></article>`).join('')
+        : `<div class="unavailable-panel"><strong>아직 트렌드 영상이 없습니다</strong><p>상단 <b>시장 레이더</b>에서 국가(${escapeHtml(regionLabel)})를 고르고 스캔하면, 지금 뜨는 60초 이하 영상들이 여기 채워집니다.</p><button class="secondary-button" data-view="market">시장 레이더로 이동</button></div>`}
+    </div>
+
     <div class="production-source-list">
-      <div class="block-heading"><div><p class="eyebrow">MY SHORT-FORM</p><h2>내 채널에서 시작</h2></div><span>60초 이하</span></div>
-      ${candidates.length ? candidates.map((video) => `<article><img src="${safeUrl(video.thumbnailUrl)}" alt=""/><div><small>${formatDuration(video.durationSeconds)} · ${formatNumber(video.metrics.views)} 조회</small><h3>${escapeHtml(video.title)}</h3></div><button class="secondary-button" data-create-production="owned" data-production-id="${escapeHtml(video.videoId)}">원본 작업팩 만들기</button></article>`).join('') : '<div class="unavailable-panel"><strong>60초 이하 내 영상이 없습니다</strong><p>시장 레이더에서 60초 이하 영상을 찾아 새 원본 작업팩을 만들 수 있습니다.</p></div>'}
+      <div class="block-heading"><div><p class="eyebrow">MY SHORT-FORM</p><h2>내 채널 영상에서 시작</h2></div><span>60초 이하</span></div>
+      ${candidates.length ? candidates.map((video) => `<article><img src="${safeUrl(video.thumbnailUrl)}" alt=""/><div><small>${formatDuration(video.durationSeconds)} · ${formatNumber(video.metrics.views)} 조회</small><h3>${escapeHtml(video.title)}</h3></div><button class="secondary-button" data-create-production="owned" data-production-id="${escapeHtml(video.videoId)}">원본 작업팩 만들기</button></article>`).join('') : '<div class="unavailable-panel"><strong>60초 이하 내 영상이 없습니다</strong><p>위의 트렌드 영상에서 새 원본 작업팩을 만들 수 있습니다.</p></div>'}
     </div>
   </section>`;
 }

@@ -17,28 +17,56 @@ const DAY_MS = 86_400_000;
 const REGION_LABELS: Record<string, string> = { KR: '대한민국', US: '미국', JP: '일본', GB: '영국' };
 
 const STOP_WORDS = new Set([
-  'shorts', '쇼츠', 'short', 'youtube', '유튜브', 'the', 'and', 'for', 'you', 'your',
-  '이거', '그리고', '하는', '있는', '없는', '진짜', '정말', '오늘', '이것', '저것',
+  'shorts', '쇼츠', 'short', 'youtube', '유튜브', 'ytshorts', 'viral', 'funny', 'comedy',
+  'the', 'and', 'for', 'you', 'your', 'a', 'an', 'to', 'of', 'in', 'on', 'is', 'it', 'my',
+  'when', 'what', 'why', 'how', 'part', 'dont', "don't", 'this', 'that', 'with', 'i',
+  '이거', '그리고', '하는', '있는', '없는', '진짜', '정말', '오늘', '이것', '저것', '웃긴영상',
+  '바이럴', '한국바이럴', '개그', '꿀잼', '재미', '웃음', '수정', '숶천',
 ]);
 
-function keywordFromTitle(title: string): string {
-  const word = title
-    .replace(/[#()[\]{}!?.,:;“”"'|｜]/g, ' ')
+const HANGUL = /[\uac00-\ud7a3]/;
+
+function candidateTokens(title: string): string[] {
+  return title
+    .replace(/[()[\]{}!?.,:;“”"'|｜]/g, ' ')
     .split(/\s+/)
-    .map((token) => token.trim())
-    .find((token) => token.length >= 2 && !STOP_WORDS.has(token.toLocaleLowerCase()));
-  return word ?? title.slice(0, 12).trim();
+    .map((token) => token.replace(/^#/, '').trim())
+    .filter(Boolean);
 }
 
-export function toTrendSignals(videos: RankedShort[]): TrendSignal[] {
-  return videos.slice(0, 8).map((video) => ({
-    title: video.title,
-    channelTitle: video.channelTitle,
-    keyword: keywordFromTitle(video.title),
-    velocityPerHour: video.velocity,
-    views: video.views,
-    videoId: video.videoId,
-  }));
+// Prefer a meaningful Korean keyword when present, then a longer Latin token,
+// skipping generic filler/hashtag noise so trend tie-ins stay on-topic.
+function keywordFromTitle(title: string, preferHangul: boolean): string {
+  const tokens = candidateTokens(title);
+  const usable = tokens.filter((token) => token.length >= 2 && !STOP_WORDS.has(token.toLocaleLowerCase()));
+  if (preferHangul) {
+    const hangul = usable.find((token) => HANGUL.test(token) && token.length >= 2);
+    if (hangul) return hangul;
+  }
+  const meaningful = usable.find((token) => token.length >= 3) ?? usable[0];
+  return meaningful ?? title.slice(0, 12).trim();
+}
+
+function looksRelevant(title: string, preferHangul: boolean): boolean {
+  // For KR/JP, drop clearly off-language trend rows (e.g., Hindi/English-only spam)
+  // so the launch calendar and produce list surface region-native topics.
+  if (!preferHangul) return true;
+  return HANGUL.test(title);
+}
+
+export function toTrendSignals(videos: RankedShort[], region: RegionCode = 'KR'): TrendSignal[] {
+  const preferHangul = region === 'KR';
+  return videos
+    .filter((video) => looksRelevant(video.title, preferHangul))
+    .slice(0, 8)
+    .map((video) => ({
+      title: video.title,
+      channelTitle: video.channelTitle,
+      keyword: keywordFromTitle(video.title, preferHangul),
+      velocityPerHour: video.velocity,
+      views: video.views,
+      videoId: video.videoId,
+    }));
 }
 
 // Hook library grounded in short-form retention behavior: the first 1-2 seconds

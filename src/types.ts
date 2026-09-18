@@ -3,15 +3,59 @@ export type DataBasis = 'measured' | 'public' | 'inferred' | 'unavailable';
 export type ContentKind = 'short' | 'video';
 export type ContentKindConfidence = 'verified' | 'candidate';
 export type DiagnosisPriority = 'critical' | 'high' | 'medium' | 'opportunity';
-export type AppView = 'diagnosis' | 'market';
+export type AppView = 'diagnosis' | 'market' | 'produce';
 export type DashboardSection = 'overview' | 'content' | 'doctor' | 'plan';
 export type RegionCode = 'KR' | 'US' | 'JP' | 'GB';
 export type PeriodHours = 24 | 168 | 720;
 
 export interface RuntimeConfig {
   googleOAuthClientId: string;
-  targetChannelHandle: string;
-  targetChannelId: string;
+  appLabel: string;
+}
+
+export interface ConnectedChannel {
+  channelId: string;
+  title: string;
+  customUrl?: string;
+  avatarUrl: string;
+  expiresAt: number;
+}
+
+export interface ProductionDraft {
+  id: string;
+  sourceType: 'owned' | 'market';
+  sourceVideoId: string;
+  sourceTitle: string;
+  sourceChannelTitle: string;
+  sourceThumbnailUrl: string;
+  sourceUrl: string;
+  targetDurationSeconds: number;
+  title: string;
+  description: string;
+  tags: string[];
+  script: string;
+  shotDirections: string[];
+  createdAt: string;
+}
+
+export interface PublishDraft {
+  title: string;
+  description: string;
+  tags: string[];
+  scheduledAtLocal: string;
+  madeForKids: boolean;
+  containsSyntheticMedia: boolean;
+  mode: 'private' | 'scheduled';
+  auditConfirmed: boolean;
+}
+
+export interface UploadState {
+  fileName: string;
+  fileSize: number;
+  progress: number;
+  phase: 'idle' | 'ready' | 'initializing' | 'uploading' | 'processing' | 'complete' | 'error';
+  message: string;
+  videoId: string | null;
 }
 
 export interface ChannelProfile {
@@ -187,11 +231,15 @@ export interface AppState {
   selectedVideoId: string | null;
   contentFilter: 'all' | ContentKind;
   sortBy: 'health' | 'views' | 'recent';
-  googleConnected: boolean;
+  connectedChannels: ConnectedChannel[];
+  activeChannelId: string | null;
   marketFilters: DashboardFilters;
   marketVideos: RankedShort[];
   marketLoading: boolean;
   marketError: string | null;
+  productionDraft: ProductionDraft | null;
+  publishDraft: PublishDraft | null;
+  upload: UploadState;
 }
 
 // Market radar types retained for the authenticated secondary trend view.

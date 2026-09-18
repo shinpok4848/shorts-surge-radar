@@ -1,4 +1,4 @@
-# ROMANCE PULSE 운영 가이드
+# MY CHANNEL PULSE 운영 가이드
 
 ## 절대 공유하지 않을 정보
 
@@ -21,9 +21,10 @@
 
 - [ ] Audience: External
 - [ ] Publishing status: Testing
-- [ ] Test users: 낭만구조대 소유 Google 이메일 1명만 등록
+- [ ] Test users: 연결할 모든 Google 이메일 등록
 - [ ] Scope: `youtube.readonly`
 - [ ] Scope: `yt-analytics.readonly`
+- [ ] Scope: `youtube.upload`
 
 ### OAuth Web Client
 
@@ -38,12 +39,9 @@
 ```json
 {
   "googleOAuthClientId": "<client-id>.apps.googleusercontent.com",
-  "targetChannelHandle": "@낭만구조대",
-  "targetChannelId": ""
+  "appLabel": "MY CHANNEL PULSE"
 }
 ```
-
-최초 연결 후 실제 채널 ID를 확인할 수 있으면 `targetChannelId`에 `UC...` 값을 넣고 다시 배포하는 것을 권장합니다.
 
 ## 배포
 
@@ -58,18 +56,33 @@ git diff --check
 ## 사용 세션
 
 - 로그인 버튼 클릭 전에는 API 호출이 없습니다.
-- Google 팝업에서 본인 계정 또는 연결된 브랜드 채널을 선택합니다.
-- 채널이 `@낭만구조대`와 다르면 토큰을 폐기합니다.
-- 토큰은 메모리에만 있고 약 1시간 후 만료될 수 있습니다.
-- 페이지 새로고침 또는 로그아웃 후 다시 인증해야 합니다.
-- Studio CSV는 로그인된 낭만구조대 데이터에만 병합합니다.
+- Google 팝업에서 사용할 계정 또는 브랜드 채널을 선택합니다.
+- **계정 추가**로 다른 Google 계정·채널을 원하는 만큼 연결하고, 상단 선택기로 전환합니다.
+- 채널별 토큰은 메모리에만 있고 약 1시간 후 만료될 수 있습니다.
+- 새로고침 또는 연결 해제 후 다시 인증해야 합니다.
+- Studio CSV는 현재 활성 채널 데이터에만 병합됩니다.
+
+## CapCut 제작팩
+
+- 내 60초 이하 영상 또는 60초 이하 시장 영상에서 작업팩을 생성합니다.
+- 참고 영상의 대본·화면·음원을 복제하지 않습니다. 초안은 주제·구조만 참고해 새로 작성됩니다.
+- 대본과 메타데이터를 편집하고 권리 확인 후 ZIP을 받습니다.
+- CapCut Desktop 또는 Web에서 `01_capcut_captions.srt`를 UTF-8 자막으로 가져옵니다. 모바일 앱은 직접 가져오기가 제한될 수 있습니다.
+
+## 업로드·예약 발행
+
+- 완성한 로컬 MP4/MOV/WebM 파일을 활성 채널로 재개 가능 업로드합니다.
+- 기본값은 **비공개 업로드**이며, YouTube Studio에서 검토 후 공개를 권장합니다.
+- **자동 예약 공개**는 최소 15분 이후 시각과 API 감사 완료 확인 체크가 필요합니다.
+- 미감사 API 프로젝트는 비공개로만 업로드될 수 있으며, 이 경우 Studio에서 공개 예약을 완료합니다.
+- 아동용 여부와 합성·변형 콘텐츠 여부를 정확히 선언합니다.
 
 ## API 할당량
 
 - 업로드 수집은 저비용 uploads playlist와 `videos.list` 배치를 사용합니다.
-- 비용이 큰 `search.list`는 사용자가 연관영상 또는 시장 스캔을 요청할 때만 실행합니다.
-- 같은 검색을 반복하면 Google Cloud 프로젝트 할당량을 소비합니다.
-- 앱은 기본적으로 최대 2,000개 업로드를 불러옵니다.
+- 비용이 큰 `search.list`는 연관영상·시장 스캔 시에만 실행합니다.
+- `videos.insert` 업로드도 프로젝트 할당량을 소비합니다.
+- 앱은 기본적으로 채널당 최대 2,000개 업로드를 불러옵니다.
 
 ## 장애 대응
 
@@ -77,11 +90,12 @@ git diff --check
 |---|---|
 | OAuth Client ID 설정 필요 | `public/app-config.json` 입력 후 `bun run build` 및 재배포 |
 | `origin_mismatch` | Authorized JavaScript origins에 `https://shinpok4848.github.io` 추가 |
-| 앱이 테스트 액세스를 거부 | OAuth Test users에 본인 Google 이메일 추가 |
+| 앱이 테스트 액세스를 거부 | OAuth Test users에 해당 Google 이메일 추가 |
 | API가 활성화되지 않음 | Data API와 Analytics API 모두 활성화 |
-| 낭만구조대가 아니라는 오류 | Google/브랜드 계정 선택을 변경; 필요하면 YouTube에서 채널 전환 후 재로그인 |
+| 업로드 권한 오류 | `youtube.upload` 범위 추가 후 채널 다시 연결 |
+| 예약이 비공개로 적용됨 | API 프로젝트 감사 완료 여부 확인, Studio에서 공개 예약 |
 | Analytics 데이터가 적음 | 최근 2~3일 처리 지연과 365일 분석 범위 확인 |
-| CTR이 없음 | YouTube Studio 고급 모드 CSV에서 노출·CTR 열을 포함해 가져오기 |
+| CTR이 없음 | YouTube Studio 고급 모드 CSV에서 노출·CTR 열 포함 |
 | 시장 검색 할당량 초과 | 검색 횟수를 줄이고 다음 할당량 갱신까지 대기 |
 | 팝업 차단 | 브라우저에서 사이트의 팝업 허용 |
 
@@ -96,9 +110,10 @@ git diff --check
 
 1. Client ID가 없는 빌드에서 로그인 버튼이 안전한 설정 안내를 표시하는지 확인
 2. 허용된 Test user로 Google 팝업이 열리는지 확인
-3. 다른 채널 선택 시 대시보드가 열리지 않는지 확인
-4. 낭만구조대 선택 시 모든 업로드와 Analytics가 표시되는지 확인
-5. 콘텐츠 지도, 영상 닥터, 연관영상, 시장 레이더 확인
-6. 로그아웃 후 데이터가 화면에서 사라지는지 확인
-7. 390px 모바일에서 가로 넘침이 없는지 확인
-8. 저장소와 `docs/`에 비밀번호, Client Secret, 토큰, API 키가 없는지 검색
+3. 여러 채널을 연결하고 선택기로 전환되는지 확인
+4. 콘텐츠 지도, 영상 닥터, 연관영상, 시장 레이더 확인
+5. CapCut 작업팩 ZIP이 SRT·CSV·메타데이터를 포함해 생성되는지 확인
+6. 비공개 업로드와 예약 옵션·감사 확인 게이트가 동작하는지 확인
+7. 로그아웃 후 데이터가 화면에서 사라지는지 확인
+8. 390px 모바일에서 가로 넘침이 없는지 확인
+9. 저장소와 `docs/`에 비밀번호, Client Secret, 토큰, API 키가 없는지 검색

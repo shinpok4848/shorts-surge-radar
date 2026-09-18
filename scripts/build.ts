@@ -39,11 +39,11 @@ const html = `<!doctype html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="낭만구조대 채널 소유자 전용 YouTube Analytics 성장 진단 대시보드" />
+    <meta name="description" content="내 YouTube 채널 소유자 전용 진단·CapCut 제작·예약 발행 대시보드" />
     <meta name="theme-color" content="#090b0a" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <style>${css}</style>
-    <title>ROMANCE PULSE — 낭만구조대 전용 성장 진단</title>
+    <title>MY CHANNEL PULSE — 내 채널 진단·제작·예약</title>
   </head>
   <body>
     <div id="app"></div>
